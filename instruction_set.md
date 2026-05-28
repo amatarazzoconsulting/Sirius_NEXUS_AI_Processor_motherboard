@@ -8531,3 +8531,503 @@ This concludes Chapter 11 and the complete Instruction Set Reference for the PIP
 
 The instruction set documented across these eleven chapters provides a complete programming model for the platform, from basic data movement and arithmetic to advanced vector processing, probabilistic inference, system management, interconnect, memory management, and protection. Each instruction has been specified with its encoding, operation, operands, and assembly examples sufficient for both compiler writers and assembly language programmers.
 
+
+
+# Addendum A: Inference-Optimized Advanced Math Extensions
+
+## A.1 Introduction to INT4 Inference Acceleration
+
+The preceding chapters documented the complete PIP CISC instruction set for general-purpose computing, including FP16, FP32, and INT8 operations. However, the explosion of AI inference workloads—from large language models to diffusion-based image generation—has created demand for even lower-precision arithmetic. INT4 (4-bit integer) quantization reduces memory bandwidth by a factor of 4 compared to FP16 and increases compute throughput by a factor of 4 for the same number of ALUs. This addendum documents the inference-optimized extensions to the PIP CISC ISA, including new INT4 instructions, mixed-precision operations, and inference-specific accelerators.
+
+The inference-optimized Math core retains the same 512-bit datapath as the general-purpose core but replaces the 16 FP32 ALUs with 128 INT4 ALUs. Each INT4 ALU can perform one multiplication and one addition per cycle. The peak INT4 performance increases from 80 teraops to 320 teraops per blade. The power consumption per operation drops by approximately a factor of 4 because 4-bit multipliers consume less energy than 16-bit multipliers. These changes make the inference-optimized PIP CISC platform the most efficient architecture for large-scale AI deployment.
+
+---
+
+## A.2 INT4 Data Movement Instructions
+
+### A.2.1 MOVI4 – Move 4-bit Packed Data
+
+The MOVI4 instruction moves packed INT4 data between registers and memory. Unlike the standard MOV instruction, which operates on byte-aligned data, MOVI4 packs four 4-bit values into each 16-bit word. The packing order is little-endian: the first 4-bit value occupies bits 0-3, the second occupies bits 4-7, the third occupies bits 8-11, and the fourth occupies bits 12-15.
+
+**Encoding Format**
+
+MOVI4 uses opcode 0x90. The instruction header contains opcode 0x90, flags, and operand count of 2. The flags field has bit 8 for non-temporal hint, bit 9 for zero extension (unpacked destination), and bits 10-15 reserved.
+
+The source and destination operands use the same descriptor formats as MOV. However, the size field in the descriptor is interpreted as the number of 4-bit elements, not the number of bytes. For example, a size of 16 means 16 4-bit elements, which occupies 8 bytes of memory.
+
+**Operation Details**
+
+When MOVI4 executes with a memory source and a register destination, the hardware reads the specified number of bytes from memory, unpacks the 4-bit values into consecutive 8-bit bytes (with zero extension), and stores them in the destination register. The unpacking is performed by a dedicated shifter that operates in 1 cycle.
+
+When MOVI4 executes with a register source and a memory destination, the hardware packs the 4-bit values from the register into 16-bit words and writes them to memory. The packing is performed by a dedicated compressor that operates in 1 cycle.
+
+**Assembly Examples**
+
+```assembly
+; Load 16 INT4 values (8 bytes) from memory into register R1
+MOVI4 R1, [R2]
+
+; Store 16 INT4 values from register R1 to memory
+MOVI4 [R2], R1
+
+; Non-temporal store (bypass cache)
+MOVI4.NT [R2], R1
+
+; Load and zero-extend to 8-bit values in vector register
+MOVI4.Z V1, [R2]
+```
+
+---
+
+### A.2.2 PACKI4 – Pack 8-bit Integers to 4-bit
+
+The PACKI4 instruction converts a vector of 8-bit integers to a packed vector of 4-bit integers. Each pair of 8-bit values is combined into one 16-bit word containing two 4-bit values. The instruction saturates values outside the -8 to 7 range.
+
+**Encoding Format**
+
+PACKI4 uses opcode 0x91. The instruction header contains opcode 0x91, flags, and operand count of 2. The flags field has bit 8 for saturation mode (clamp to -8/7), bit 9 for rounding mode, and bits 10-15 reserved.
+
+The source operand is a vector of 8-bit integers. The destination operand is a packed vector of 4-bit integers.
+
+**Assembly Examples**
+
+```assembly
+; Pack 16 8-bit values from V1 into 8 bytes of packed INT4 in V2
+PACKI4 V2, V1
+
+; Pack with saturation (clamp out-of-range values)
+PACKI4.S V2, V1
+
+; Pack with rounding (nearest instead of truncation)
+PACKI4.R V2, V1
+```
+
+---
+
+### A.2.3 UNPACKI4 – Unpack 4-bit Integers to 8-bit
+
+The UNPACKI4 instruction converts a packed vector of 4-bit integers to a vector of 8-bit integers, with sign extension or zero extension.
+
+**Encoding Format**
+
+UNPACKI4 uses opcode 0x92. The instruction header contains opcode 0x92, flags, and operand count of 2. The flags field has bit 8 for sign extension, bit 9 for zero extension, and bits 10-15 reserved.
+
+The source operand is a packed vector of 4-bit integers. The destination operand is a vector of 8-bit integers.
+
+**Assembly Examples**
+
+```assembly
+; Unpack 16 INT4 values from packed V1 to 16 INT8 values in V2 (sign extend)
+UNPACKI4.S V2, V1
+
+; Unpack with zero extension (treat as unsigned)
+UNPACKI4.Z V2, V1
+```
+
+---
+
+## A.3 INT4 Arithmetic Instructions
+
+### A.3.1 ADDI4 – Add Packed INT4 Values
+
+The ADDI4 instruction performs element-wise addition of packed INT4 vectors. The operation is saturated to prevent overflow.
+
+**Encoding Format**
+
+ADDI4 uses opcode 0x93. The instruction header contains opcode 0x93, flags, and operand count of 3. The flags field has bit 8 for saturation mode, bit 9 for vector length, and bits 10-15 reserved.
+
+The instruction computes destination[i] = saturate(source1[i] + source2[i]) for each 4-bit element.
+
+**Operation Details**
+
+The ADDI4 instruction processes 64 elements in parallel on a 512-bit datapath (64 elements × 4 bits = 256 bits, but the datapath can handle two such vectors in parallel). The addition uses a 5-bit accumulator to detect overflow, then clamps the result to the -8 to 7 range. The latency is 2 cycles.
+
+**Assembly Examples**
+
+```assembly
+; Add two packed INT4 vectors
+ADDI4 V1, V2, V3
+
+; Add with saturation (default, explicit)
+ADDI4.S V1, V2, V3
+
+; Vector of 128 elements (1024-bit mode)
+ADDI4.X V1, V2, V3
+```
+
+---
+
+### A.3.2 MULI4 – Multiply Packed INT4 Values
+
+The MULI4 instruction performs element-wise multiplication of packed INT4 vectors. The product of two 4-bit values ranges from -56 to 64, which requires 7 bits of storage. The result is saturated to the INT4 range.
+
+**Encoding Format**
+
+MULI4 uses opcode 0x94. The instruction header contains opcode 0x94, flags, and operand count of 3. The flags field has bit 8 for saturation mode, bit 9 for rounding mode, and bits 10-15 reserved.
+
+The instruction computes destination[i] = saturate(source1[i] × source2[i]) for each 4-bit element.
+
+**Operation Details**
+
+The multiplication uses a lookup table rather than a full multiplier. The 4-bit inputs are used as indices into a 16×16 table of precomputed products. The lookup table is stored in a small ROM and has a latency of 1 cycle. The saturation takes an additional cycle, for a total latency of 2 cycles.
+
+**Assembly Examples**
+
+```assembly
+; Multiply two packed INT4 vectors
+MULI4 V1, V2, V3
+
+; Multiply with rounding (nearest instead of truncation)
+MULI4.R V1, V2, V3
+```
+
+---
+
+### A.3.3 DOTI4 – INT4 Dot Product
+
+The DOTI4 instruction computes the dot product of two packed INT4 vectors, accumulating the result in a 32-bit integer accumulator. This is the core operation for quantized matrix multiplication.
+
+**Encoding Format**
+
+DOTI4 uses opcode 0x95. The instruction header contains opcode 0x95, flags, and operand count of 3. The flags field has bit 8 for accumulation (add to existing accumulator), bit 9 for vector length, and bits 10-15 reserved.
+
+The instruction computes accumulator = accumulator + Σ(source1[i] × source2[i]) for all elements.
+
+**Operation Details**
+
+The DOTI4 instruction multiplies all corresponding element pairs in parallel using the lookup table, then sums the products using a reduction tree. The reduction tree has log2(N) levels. For 64 elements, the reduction takes 6 cycles. The total latency is 8 cycles.
+
+**Assembly Examples**
+
+```assembly
+; Compute dot product of two packed INT4 vectors
+DOTI4 R1, V2, V3
+
+; Accumulate into existing register
+DOTI4.A R1, V2, V3
+
+; 128-element dot product
+DOTI4.X R1, V2, V3
+```
+
+---
+
+### A.3.4 MATMULI4 – INT4 Matrix Multiplication
+
+The MATMULI4 instruction performs a matrix multiplication of two INT4 matrices, accumulating the results in 32-bit integers. This instruction is optimized for the matrix multiplications that dominate neural network inference.
+
+**Encoding Format**
+
+MATMULI4 uses opcode 0x96. The instruction header contains opcode 0x96, flags, and operand count of 5. The operands are: destination matrix address, first source matrix address, second source matrix address, M dimension (rows of first), K dimension (columns of first / rows of second), and N dimension (columns of second).
+
+The flags field has bit 8 for transpose first matrix, bit 9 for transpose second matrix, bit 10 for bias addition, bit 11 for activation, and bits 12-15 reserved.
+
+**Operation Details**
+
+The MATMULI4 instruction uses a systolic array of 64×64 multiply-accumulate units to compute the matrix product. The systolic array operates at 2 GHz and can compute a 64×64×64 matrix multiplication in 64 cycles. Larger matrices are tiled automatically by the hardware.
+
+The instruction supports optional bias addition and activation functions (ReLU, GELU, etc.) in the same pass, eliminating the need for separate passes through memory.
+
+**Assembly Examples**
+
+```assembly
+; Multiply two INT4 matrices: C = A × B, where A is M×K, B is K×N
+MATMULI4 C, A, B, M, K, N
+
+; Multiply with transpose: C = A × B^T
+MATMULI4.T1 C, A, B, M, K, N
+
+; Multiply with bias and ReLU activation
+MATMULI4.R C, A, B, M, K, N, bias
+
+; Multiply with GELU activation (transformer)
+MATMULI4.G C, A, B, M, K, N, bias
+```
+
+---
+
+## A.4 Inference-Specific Instructions
+
+### A.4.1 SOFTMAXI4 – INT4 Softmax
+
+The SOFTMAXI4 instruction computes the softmax function on INT4 logits, using FP16 for the intermediate computation to preserve accuracy.
+
+**Encoding Format**
+
+SOFTMAXI4 uses opcode 0x97. The instruction header contains opcode 0x97, flags, and operand count of 2. The flags field has bit 8 for temperature scaling, bit 9 for log-softmax, and bits 10-15 reserved.
+
+**Operation Details**
+
+The instruction first dequantizes the INT4 logits to FP16 using the current scale factor, computes the softmax in FP16 using the existing SOFTMAX instruction, then quantizes the result back to INT4. The entire operation takes 30 cycles plus the quantization overhead.
+
+**Assembly Examples**
+
+```assembly
+; Softmax on INT4 logits in V1, result in V2
+SOFTMAXI4 V2, V1
+
+; Temperature-scaled softmax (T=0.7)
+SOFTMAXI4.T V2, V1, #0.7
+
+; Log-softmax (for cross-entropy loss)
+SOFTMAXI4.L V2, V1
+```
+
+---
+
+### A.4.2 ATTENTIONI4 – INT4 Multi-Head Attention
+
+The ATTENTIONI4 instruction computes the scaled dot-product attention mechanism entirely in INT4, with FP16 used only for the softmax. This is the critical operation in transformer models.
+
+**Encoding Format**
+
+ATTENTIONI4 uses opcode 0x98. The instruction header contains opcode 0x98, flags, and operand count of 6. The operands are: output address, query address, key address, value address, sequence length, and head dimension.
+
+The flags field has bit 8 for causal masking, bit 9 for flash attention optimization, and bits 10-15 reserved.
+
+**Operation Details**
+
+The instruction computes attention = softmax(Q × K^T / sqrt(d)) × V, all in INT4 except the division and softmax. The computation is performed in tiles to optimize cache usage. The latency is O(L^2) for sequence length L, but the constant factor is much smaller than software.
+
+**Assembly Examples**
+
+```assembly
+; Compute attention for sequence length 2048, head dimension 64
+ATTENTIONI4 output, Q, K, V, #2048, #64
+
+; With causal masking (autoregressive)
+ATTENTIONI4.C output, Q, K, V, #2048, #64
+
+; Flash attention (memory-optimized)
+ATTENTIONI4.F output, Q, K, V, #2048, #64
+```
+
+---
+
+### A.4.3 GELUI4 – INT4 GELU Activation
+
+The GELUI4 instruction computes the GELU activation function on INT4 values. GELU(x) = x × Φ(x), where Φ is the cumulative distribution function of the standard normal.
+
+**Encoding Format**
+
+GELUI4 uses opcode 0x99. The instruction header contains opcode 0x99, flags, and operand count of 2. The flags field has bit 8 for approximate mode (faster, lower accuracy), and bits 9-15 reserved.
+
+**Operation Details**
+
+The instruction uses a lookup table with 16 entries (one for each possible 4-bit value) to compute the GELU approximation. The lookup table is precomputed by the hardware and can be updated by software. The latency is 1 cycle.
+
+**Assembly Examples**
+
+```assembly
+; Apply GELU to INT4 vector V1, result in V2
+GELUI4 V2, V1
+
+; Fast approximate GELU (2x faster, 1% accuracy loss)
+GELUI4.F V2, V1
+```
+
+---
+
+### A.4.4 LAYERNORMI4 – INT4 Layer Normalization
+
+The LAYERNORMI4 instruction computes layer normalization on INT4 tensors. The instruction computes the mean and variance in FP16, normalizes each element, and quantizes the result.
+
+**Encoding Format**
+
+LAYERNORMI4 uses opcode 0x9A. The instruction header contains opcode 0x9A, flags, and operand count of 3. The operands are: output address, input address, and normalization parameters (scale and bias).
+
+**Operation Details**
+
+The instruction reads a vector of INT4 values, converts them to FP16, computes the mean and variance, normalizes each element, applies the learned scale and bias, and quantizes back to INT4. The latency is 50 cycles for a 512-element vector.
+
+**Assembly Examples**
+
+```assembly
+; Normalize a 512-element INT4 vector
+LAYERNORMI4 output, input, params
+```
+
+---
+
+### A.4.5 RESIDUALI4 – INT4 Residual Connection
+
+The RESIDUALI4 instruction adds a residual connection between two INT4 tensors, performing the addition in FP16 to preserve accuracy.
+
+**Encoding Format**
+
+RESIDUALI4 uses opcode 0x9B. The instruction header contains opcode 0x9B, flags, and operand count of 3. The operands are: output address, input address (the residual), and the main path output address.
+
+**Operation Details**
+
+The instruction reads two INT4 vectors, dequantizes them to FP16, adds them, and quantizes the result back to INT4. The latency is 20 cycles for a 512-element vector.
+
+**Assembly Examples**
+
+```assembly
+; Residual connection: output = input + residual
+RESIDUALI4 output, input, residual
+```
+
+---
+
+## A.5 Inference-Optimized Core Configuration
+
+The inference-optimized Math core chiplet contains 128 INT4 ALUs instead of 16 FP32 ALUs. The chiplet area remains 2mm × 2mm, but the transistor count is lower because INT4 ALUs are smaller. The power consumption per chiplet drops from 2 watts to 0.5 watts. A single inference blade contains 1,000 such chiplets, for a total of 128,000 INT4 cores. The peak INT4 performance is 128,000 cores × 2 GHz × 128 elements per cycle = 32,768 teraops, or 32.8 petaops per blade.
+
+The memory configuration remains the same: 64GB of HBM3e and 100TB of flash. However, the effective model capacity is 4× larger because INT4 uses 4 bits per parameter instead of 16. A 100-billion-parameter model requires 50GB of INT4 memory, which fits comfortably in the 64GB HBM. A 1-trillion-parameter model requires 500GB, which does not fit in HBM but can be streamed from flash.
+
+The 256-rack inference configuration contains 5,120 blades × 128,000 cores = 655 million INT4 Math cores. The peak performance is 1.68e23 operations per second. This is sufficient to serve 50 million concurrent AI inference requests with sub-millisecond latency.
+
+---
+
+## A.6 Performance Comparison: INT4 vs FP16
+
+The following table compares the performance of key operations on the inference-optimized INT4 core versus the general-purpose FP16 core:
+
+| Operation | FP16 Core | INT4 Core | Speedup |
+|-----------|-----------|-----------|---------|
+| Matrix multiply (512×512) | 16,000 cycles | 1,000 cycles | 16× |
+| Dot product (512 elements) | 512 cycles | 64 cycles | 8× |
+| Convolution (3×3, 224×224) | 50,000 cycles | 6,250 cycles | 8× |
+| Softmax (512 elements) | 28 cycles | 30 cycles | 0.93× |
+| Layer norm (512 elements) | 25 cycles | 50 cycles | 0.5× |
+| Attention (L=2048, d=64) | 1,000,000 cycles | 125,000 cycles | 8× |
+
+The INT4 core is 8-16× faster for compute-bound operations (matrix multiply, convolution, attention) but slightly slower for normalization operations that require FP16 precision. For most transformer models, the compute-bound operations dominate, resulting in an overall speedup of 5-10×.
+
+---
+
+## A.7 Software Support for INT4 Extensions
+
+The INT4 extensions are fully integrated into the PIP CISC compiler toolchain. The compiler automatically quantizes models to INT4 when the `-minference` flag is used. The quantization process uses a learned scale factor per tensor, which is stored in the model file and loaded into the hardware at runtime.
+
+The following pragmas control INT4 behavior:
+
+```c
+#pragma quantize INT4  // Enable INT4 quantization for subsequent code
+#pragma quantize FP16  // Return to FP16
+#pragma scale factor=0.0078  // Set quantization scale factor
+```
+
+The runtime library provides functions to load quantized models, set scale factors, and execute inference:
+
+```c
+model_t* load_quantized_model(const char* path);
+void set_scale(model_t* model, int tensor_id, float scale);
+void infer(model_t* model, int4_t* input, int4_t* output);
+```
+
+---
+
+This addendum completes the inference-optimized extensions to the PIP CISC instruction set. Together with the base ISA documented in the preceding chapters, these extensions enable the PIP CISC platform to serve as the most efficient architecture for AI inference at any scale, from a single desktop to a 256-rack data center.
+
+---
+
+# Addendum B: Motherboard Design for Inference-Optimized Blades
+
+## B.1 Introduction
+
+The inference-optimized blade requires a different motherboard design than the general-purpose blade. The lower power consumption (200 watts vs 700 watts) allows for higher density and simpler cooling. The optical transceiver count remains 12, providing 9.6 Tb/s of off-board bandwidth. The storage configuration is increased to 200TB to accommodate larger models.
+
+This addendum provides the complete motherboard design specification for the inference-optimized PIP CISC blade, including substrate materials, component layout, thermal management, and power delivery.
+
+---
+
+## B.2 Substrate Materials and Dimensions
+
+The inference-optimized blade measures 200mm × 500mm × 40mm, the same form factor as the general-purpose blade. However, the substrate has only 8 layers instead of 12 because the lower power consumption reduces the number of required power planes. The reduced layer count lowers manufacturing cost and improves yield.
+
+The substrate core is manufactured from aluminum nitride (AlN) with a thickness of 1.6mm. The coefficient of thermal expansion is 4.5 ppm/°C, matching the silicon interposer. The thermal conductivity is 180 W/mK in the plane of the board.
+
+The power planes are reduced from 12 to 8: two for core logic (0.8V), two for memory (1.2V), two for I/O (1.8V), and two for flash (3.3V). Each power plane is 35 microns thick and perforated with thermal vias at 500-micron pitch.
+
+The signal layers are 4, carrying the PIP-Fabric traces and the memory interface. The traces are 10 microns wide with 10-micron spacing for the signal layers, and 15 microns wide with 15-micron spacing for the high-speed layers.
+
+---
+
+## B.3 Silicon Interposer for Inference
+
+The inference-optimized interposer measures 150mm × 150mm, the same as the general-purpose interposer. However, the layout is different because the INT4 Math chiplets are smaller (2mm × 2mm) but more numerous (1,000 chiplets). The chiplets are arranged in a 40×25 grid instead of 100×10.
+
+The Logic core chiplets are reduced from 256 to 128 because inference requires less branching than training. The System core chiplets remain 40. The total chiplet count is 1,168, which is 128 less than the general-purpose blade.
+
+The HBM3e memory stacks remain 8, providing 64GB of memory. However, the memory bandwidth can be reduced to 2 TB/s because INT4 operations require less bandwidth than FP16. This allows the use of cheaper HBM2e memory, reducing cost.
+
+The through-silicon vias remain at 10-micron diameter with 50-micron pitch. The redistribution layers are reduced from 9 to 6 because the lower bandwidth requires fewer signal layers.
+
+---
+
+## B.4 Component Placement
+
+The inference-optimized blade has the following component placement:
+
+- 1,000 INT4 Math chiplets in a 40×25 grid on the interposer
+- 128 Logic core chiplets in a 16×8 grid on the left side
+- 40 System core chiplets in an 8×5 grid on the right side
+- 8 HBM3e memory stacks around the perimeter
+- 200TB of NAND flash (160 chips of 1.28TB) on both sides of the substrate
+- 12 optical transceivers along the rear edge
+- Edge connector at the rear
+- Decoupling capacitors distributed across the substrate
+
+The flash chips are arranged in 8 rows of 20 chips on each side of the substrate. The higher density requires careful thermal management, but the lower power consumption of the inference cores compensates.
+
+---
+
+## B.5 Thermal Management for Inference Blades
+
+The inference-optimized blade consumes 200 watts, compared to 700 watts for the general-purpose blade. This allows for simpler cooling: air cooling with a copper heat spreader is sufficient, even for rack-mounted blades.
+
+The thermal encasement uses a single layer of pyrolytic graphite sheet (instead of two layers). The sheet is 0.5mm thick and covers the entire top surface of the blade. A copper heat spreader with 5mm fins is attached to the graphite sheet. Three 80mm fans provide airflow across the fins.
+
+For rack-mounted blades, the chassis has a shared fan array that provides airflow across all blades. The lower power consumption allows for quieter fans (40 dB vs 60 dB).
+
+---
+
+## B.6 Power Delivery
+
+The inference-optimized blade requires 200 watts at full load. The power delivery network uses a 12V input (instead of 48V for the general-purpose blade). The DC-DC converter is a 4-phase synchronous buck converter with 95% efficiency.
+
+The input capacitance is 500 microfarads, and the output capacitance is 2 millifarads. The decoupling capacitors are reduced from 1,000 to 200 because the lower current requires less filtering.
+
+The edge connector has 100 pins for power (reduced from 200), allowing for a smaller, cheaper connector.
+
+---
+
+## B.7 Manufacturing Cost
+
+The inference-optimized blade costs less than the general-purpose blade:
+
+| Component | General-Purpose | Inference-Optimized |
+|-----------|-----------------|---------------------|
+| Math chiplets | $10,000 (1,000×$10) | $5,000 (1,000×$5) |
+| Logic chiplets | $1,280 (256×$5) | $640 (128×$5) |
+| System chiplets | $480 (40×$12) | $480 (40×$12) |
+| HBM memory | $1,600 (8×$200) | $800 (8×$100 HBM2e) |
+| NAND flash | $4,000 (80×$50) | $8,000 (160×$50) |
+| Interposer | $200 | $150 (fewer layers) |
+| Substrate | $500 | $300 (fewer layers) |
+| Optical transceivers | $1,200 (12×$100) | $1,200 (12×$100) |
+| Cooling | $300 | $100 |
+| Other | $300 | $200 |
+| **Total components** | **$20,000** | **$16,870** |
+| Assembly | $5,000 | $3,000 |
+| Test | $2,000 | $1,500 |
+| **Manufacturing cost** | **$27,000** | **$21,370** |
+| Retail price | $50,000 | $40,000 |
+
+The inference-optimized blade is 20% cheaper to manufacture and retails for 20% less than the general-purpose blade.
+
+---
+
+## B.8 Rack Configuration for Inference
+
+A 42U rack can hold 40 inference-optimized blades (compared to 20 general-purpose blades) because the lower power consumption allows for tighter packing. The blades are spaced at 1U (44mm) instead of 2U (88mm).
+
+The rack power consumption is 40 × 200 = 8,000 watts, plus 1,000 watts for the chassis, for a total of 9,000 watts. The cooling requirement is 9,000 watts, which can be provided by air cooling with high-efficiency fans.
+
+A 256-rack data center contains 10,240 blades, 1.31 billion INT4 cores, 655 terabytes of HBM memory, and 2 petabytes of flash storage. The total power consumption is 2.3 megawatts, plus cooling. This configuration can serve 1 billion concurrent AI inference requests per second.
+
+---
+
+This addendum completes the motherboard design specification for the inference-optimized PIP CISC blade. The combination of the INT4 instruction set extensions and the optimized motherboard enables the PIP CISC platform to dominate the AI inference market at any scale.
