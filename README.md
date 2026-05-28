@@ -1,9 +1,5 @@
-# pip_cisc_ai_motherboard
-
 # PIP CISC Unified Compute Platform
 ## Complete Product Specification and Manufacturing Guide
-
-**Production Version 2.0**
 
 ---
 
