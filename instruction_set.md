@@ -1,229 +1,2025 @@
 # Sirius NEXUS AI Processor Gen5
 
-## Complete Documentation Outline (Without PIP Execution Model)
+## Volume 1: Complete Instruction Set Reference
 
-### Volume 1: Instruction Set Reference (1,500 pages)
-### Volume 2: Motherboard Design Specification (800 pages)
-### Volume 3: Executive Summary and Investor Catalog (150 pages)
+### Full Encoding, Assembly Examples, and Operand Specifications
 
----
-
-# Volume 1: Instruction Set Reference
-
-## Complete Specification of All Sirius NEXUS Instructions
-
-Volume 1 provides the complete, detailed specification of every instruction in the Sirius NEXUS ISA. Each instruction is documented with its encoding format, operation details, condition flag behavior, and ten assembly examples. The volume is organized by instruction category, progressing from simple data movement to complex AI accelerators. This volume is intended for compiler writers, assembly language programmers, and hardware verification engineers. The instruction set has been refined over five generations to eliminate redundancy while adding specialized accelerators for AI workloads, resulting in 132 instructions across 20 functional categories.
-
-The Sirius NEXUS ISA is a variable-length Complex Instruction Set Computer (CISC) architecture designed specifically for artificial intelligence and high-performance computing workloads. Unlike traditional RISC architectures that use fixed 32-bit instructions, Sirius NEXUS instructions range from 16 bits to 512 bits depending on the number of operands and the size of immediate values. This variable-length encoding allows common instructions to be very compact while complex vector operations can encode all necessary parameters without artificial constraints. The design philosophy prioritizes code density for frequently executed operations while maintaining the expressive power needed for complex AI algorithms like matrix multiplication and attention mechanisms.
-
-Every instruction shares a common header format of 20 bits containing the 8-bit opcode, 8-bit flags field, and 4-bit operand count. Following the header are operand descriptors that specify the type (register, memory, immediate, remote, or vector), size (8 to 512 bits), and addressing mode for each operand. The payload section contains immediate values and addresses referenced by the descriptors. This uniform header structure simplifies the decoder while the variable-length payload allows for efficient encoding of large constants, such as 512-bit vector masks or 64-bit memory addresses for remote blades.
-
-The ISA supports three core types with different instruction set sizes optimized for their respective workloads. Math cores implement the full 132-instruction set with vector and INT4 extensions, enabling them to execute the complex matrix operations required for AI training and inference. Logic cores implement a reduced 30-instruction subset focused on branches, calls, and integer arithmetic, making them smaller and more power-efficient for control-heavy code. System cores implement a minimal 24-instruction subset for I/O, memory management, and system calls, allowing them to run at 4 GHz with minimal area overhead.
-
-The Register Data Type Mapping (RDTM) feature reduces instruction size by 42 percent by moving type and vector length information out of individual instructions and into configuration registers. A single SET_REG_MAP instruction configures the data type (INT4, INT8, INT16, INT32, INT64, FP16, FP32, or FP64) and vector length (128, 256, 512, or 1024 bits) for all subsequent instructions until changed. This design recognizes that most programs operate on the same data types for long periods, especially in AI workloads where entire inference runs use the same precision throughout. The result is an average instruction size of 28 bits (3.5 bytes) instead of 48 bits (6 bytes), which increases L1 instruction cache capacity by 71 percent.
-
-Condition flags are updated after every arithmetic, logic, and comparison instruction, with the exception of the MOV family which does not modify flags. The flags include Zero Flag (ZF) set when the result is zero, Sign Flag (SF) set to the most significant bit of the result, Carry Flag (CF) set when unsigned overflow occurs, and Overflow Flag (OF) set when signed overflow occurs. Vector instructions update flags based only on the final element of the vector, allowing vector code to test the overall result without examining each element individually. The branch predictor uses a neural network with 98 percent accuracy for AI workloads, significantly reducing misprediction penalties.
+This volume provides the complete instruction set specification for the Sirius NEXUS AI Processor Gen5. Each instruction is documented with its encoding across all three core types (Math, Logic, System), assembly syntax, operand types, numerical formats, and multiple usage examples. The instruction set is organized into 20 functional categories, with 132 instructions total.
 
 ---
 
-## Section 1: Data Movement Instructions
+# Section 1: Instruction Encoding Overview
 
-The MOV instruction is the most frequently executed instruction in any program and serves as the fundamental data transfer mechanism. It copies data from a source operand to a destination operand without modifying the source. The instruction supports register-to-register, memory-to-register, register-to-memory, and immediate-to-register transfers. The MOV instruction can also transfer data between local and remote memory, with the hardware automatically routing remote requests across the optical fabric. The instruction takes one cycle for register-to-register transfers and the memory access latency for memory operands, which ranges from 0.95 ns for ROMB Gen2 to 100 ns for DRAM to 5 microseconds for remote memory.
+The Sirius NEXUS instruction set uses variable-length encoding that differs by core type. Math cores use 8-bit opcodes with 20-bit headers and support vector operands. Logic cores use 7-bit opcodes with 12-bit headers and support only scalar operands. System cores use 6-bit opcodes with 8-bit headers and support only the most frequently used operations. The table below summarizes the encoding differences.
 
-The MOVSX instruction moves a smaller signed integer into a larger register while preserving the sign of the value through sign extension. When a signed 8-bit value of 0xFF (which represents -1) is moved into a 32-bit register, the upper 24 bits are set to 1, resulting in 0xFFFFFFFF (also -1). The sign extension logic examines the most significant bit of the source value and replicates it across the upper bits of the destination. This instruction is essential for processing signed data from byte arrays, where values must be widened before arithmetic operations. The instruction completes in one cycle after the source is available, with the sign extension performed by a combinational shifter.
+| Core Type | Opcode Bits | Header Bits | Max Operands | Avg Instruction Size | L1 I-cache Capacity |
+|-----------|-------------|-------------|--------------|---------------------|---------------------|
+| Math Core | 8 bits (0x00-0xFF) | 20 bits | 8 | 48 bits (6 bytes) | 5,461 instructions |
+| Logic Core | 7 bits (0x00-0x7F) | 12 bits | 4 | 32 bits (4 bytes) | 16,384 instructions |
+| System Core | 6 bits (0x00-0x3F) | 8 bits | 2 | 24 bits (3 bytes) | 10,922 instructions |
 
-The MOVZX instruction moves a smaller unsigned integer into a larger register while filling the upper bits with zeros. When an unsigned 8-bit value of 0xFF (255) is moved into a 32-bit register, the upper 24 bits are set to 0, resulting in 0x000000FF (255). Zero extension is simpler than sign extension because the upper bits are simply tied to ground, requiring no logic to examine the source value. This instruction is used for unsigned integers, character data, and bit fields that should be treated as positive values. The compiler automatically chooses between MOVSX and MOVZX based on the signedness of the source type.
+**Common Header Format (Math Core - 20 bits)**
 
-The LEA instruction computes a memory address without accessing memory, storing the computed address in a register. The instruction uses the same addressing modes as MOV, including base register, offset constant, index register, and scale factor, but the address generation unit computes the address without invoking the memory controller. LEA can perform addition, multiplication by 1, 2, 4, or 8, and constant addition in a single cycle, replacing multiple arithmetic instructions. This is commonly used for pointer arithmetic, array indexing, and computing the addresses of structure fields. The instruction is also useful for adding two registers without modifying either source, as LEA can compute R1 + R2 and store the result in R3.
+| Bit Range | Field | Description |
+|-----------|-------|-------------|
+| 0-7 | Opcode | 8-bit operation code |
+| 8-15 | Flags | Vector mode, saturation, rounding, etc. |
+| 16-19 | Operand Count | Number of operands (0-15) |
 
-The XCHG instruction atomically exchanges the contents of two operands, with the exchange being indivisible with respect to other cores and DMA devices. When exchanging a register with memory, the memory controller locks the cache line, reads the current value, writes the register value, then writes the temporary buffer value back to the register. The entire sequence is atomic, making XCHG ideal for implementing spinlocks and other synchronization primitives. When exchanging two registers, the exchange is performed within the register file in a single cycle using swapped read and write ports. The instruction supports acquire-release semantics for synchronization and relaxed semantics for statistical counters.
+**Common Header Format (Logic Core - 12 bits)**
 
----
+| Bit Range | Field | Description |
+|-----------|-------|-------------|
+| 0-6 | Opcode | 7-bit operation code |
+| 7-9 | Flags | Branch condition, etc. |
+| 10-11 | Operand Count | Number of operands (0-3) |
 
-## Section 2: Arithmetic Instructions
+**Common Header Format (System Core - 8 bits)**
 
-The ADD instruction performs binary addition of two operands and stores the result in the destination operand. The arithmetic logic unit contains a dedicated 512-bit adder with carry-lookahead that computes all carry bits in parallel, avoiding the ripple delay of a simple ripple-carry adder. The adder completes in a single cycle for scalar operands and supports vector modes where multiple elements are added in parallel. The condition flags are updated after every ADD instruction, with the zero flag set if the result is zero, the sign flag set to the most significant bit, the carry flag set if unsigned overflow occurred, and the overflow flag set if signed overflow occurred.
+| Bit Range | Field | Description |
+|-----------|-------|-------------|
+| 0-5 | Opcode | 6-bit operation code |
+| 6-7 | Flags | Special operation flags |
 
-The SUB instruction performs binary subtraction, computing destination minus source and storing the result in the destination. The instruction uses the same adder hardware as ADD but with the source operand inverted before addition, implementing subtraction as addition of the two's complement. This allows the ALU to reuse the adder for both operations, saving silicon area. The condition flags are updated based on the result, with the carry flag set if a borrow was required (indicating unsigned underflow) and the overflow flag set if signed underflow occurred. Saturating subtraction clamps the result to the minimum or maximum value when underflow or overflow occurs.
+**Operand Descriptor Format (16 bits - Math and Logic Cores)**
 
-The MUL instruction performs unsigned multiplication of two operands and stores the product in a destination register that must be twice the width of the operands. The multiplier uses modified Booth encoding to reduce the number of partial products from 512 to 256 for a 512-bit multiplication. The partial products are summed using a Wallace tree of carry-save adders, which reduces 256 partial products to two numbers in eight levels of addition. The final sum is produced by a carry-propagate adder. The multiplier is pipelined with a latency of three cycles but a throughput of one multiplication per cycle, allowing independent multiplications to be performed back-to-back at full speed.
+| Bit Range | Field | Values |
+|-----------|-------|--------|
+| 0-2 | Type | 0=register, 1=memory, 2=immediate, 3=remote, 4=vector |
+| 3-5 | Size | 0=8-bit, 1=16-bit, 2=32-bit, 3=64-bit, 4=128-bit, 5=256-bit, 6=512-bit |
+| 6-8 | Behavior | 0=input, 1=output, 2=input/output |
+| 9-15 | Value | Register number, address mode, or immediate indicator |
 
-The DIV instruction performs unsigned division, dividing a 64-bit dividend by a 32-bit divisor to produce a 32-bit quotient and a 32-bit remainder. The division uses a radix-4 SRT algorithm that produces two quotient bits per cycle, achieving a latency of approximately 100 cycles for 64-bit division. The algorithm examines the top few bits of the remainder and selects a quotient digit from the set {-2, -1, 0, 1, 2}, then subtracts a multiple of the divisor from the remainder. The quotient digits are stored in a redundant signed-digit representation until all iterations complete, then converted to standard binary. Division by zero raises a divide-by-zero exception.
+**Operand Descriptor Format (8 bits - System Core)**
 
-The FMA instruction performs a fused multiply-add operation computing (a × b) + c with a single rounding at the end. This is fundamentally more accurate than performing separate multiplication and addition instructions, which round the intermediate product before the addition. The FMA hardware computes the product with infinite precision using a 2N-bit product register, adds the addend to this infinite-precision product, and then rounds once to N bits. The instruction is critical for matrix multiplication, dot products, and polynomial evaluation where accumulated rounding errors can become significant. The FMA instruction also supports vector modes for element-wise multiply-add on vectors.
+| Bit Range | Field | Values |
+|-----------|-------|--------|
+| 0-1 | Type | 0=register, 1=memory, 2=immediate |
+| 2-4 | Size | 0=8-bit, 1=16-bit, 2=32-bit, 3=64-bit |
+| 5-7 | Register | Register number (0-7) |
 
----
+**Register Names by Core Type**
 
-## Section 3: Logic and Bit Instructions
+| Core Type | Registers | Names |
+|-----------|-----------|-------|
+| Math Core | 64 vector registers (512-bit) | V0-V63 |
+| Math Core | 32 scalar registers (64-bit) | R0-R31 |
+| Logic Core | 32 scalar registers (64-bit) | R0-R31 |
+| System Core | 16 scalar registers (64-bit) | R0-R15 |
 
-The AND instruction performs a bitwise logical AND operation between two operands, setting each result bit to 1 only if both corresponding source bits are 1. The instruction is fundamental for masking operations, clearing specific bits, and testing bit patterns. The bitwise logic unit consists of 512 independent AND gates operating in parallel, completing in a single cycle for register operands. The condition flags are updated with the zero flag set if the result is zero and the sign flag set to the most significant bit, while the carry and overflow flags are cleared. Vector mode allows element-wise AND operations on vectors of up to 64 elements.
+**Numerical Formats Supported**
 
-The OR instruction performs a bitwise logical OR operation, setting each result bit to 1 if at least one corresponding source bit is 1. This instruction is used for setting specific bits, combining flag registers, and implementing Boolean logic where any true condition yields true. The OR operation is the complement of AND: OR sets bits to 1, while AND clears bits to 0. The instruction completes in one cycle and updates condition flags identically to AND. Vector OR operations are used in graphics compositing and bitmask combining.
-
-The XOR instruction performs a bitwise exclusive OR operation, setting each result bit to 1 if the corresponding source bits are different and 0 if they are the same. XOR has the useful property that XORing a value with itself produces zero, and XORing a value with zero leaves it unchanged. These properties make XOR useful for zeroing registers (which is faster than loading zero), toggling specific bits (XOR with a mask), and implementing simple encryption where XORing twice with the same key returns the original value. The classic XOR swap algorithm exchanges two registers without a temporary using three XOR instructions.
-
-The NOT instruction performs a bitwise logical NOT (one's complement) on a single operand, inverting every bit. This is a unary operation that does not require a second operand. The instruction is used for computing complements, implementing two's complement negation when followed by ADD #1, and inverting condition flags. For memory operands, NOT performs a read-modify-write cycle that is atomic with respect to other cores. The instruction completes in one cycle and updates condition flags with the zero flag set if the result is zero and the sign flag set to the most significant bit.
-
-The TEST instruction performs a bitwise AND between two operands but does not store the result, only updating the condition flags. This is used to examine specific bits without modifying any registers or memory locations. TEST is more compact and power-efficient than performing an AND followed by discarding the result. Common uses include testing a single bit (TEST R1, #0x04), testing multiple bits (TEST R1, #0x0F), and testing the sign bit (TEST R1, #0x80000000). The instruction is also used to test if a value is zero by TEST R1, R1, which sets the zero flag without modifying the register.
-
-The BSF (Bit Scan Forward) instruction finds the index of the least significant set bit (lowest bit position containing a 1) in a source operand. The bit index is stored in the destination register, with bit 0 being the least significant bit. If the source operand is zero, the zero flag is set and the destination register is undefined. The scanning hardware uses a priority encoder that finds the lowest set bit in constant time, with a tree of smaller priority encoders for 512-bit operands. This instruction is used in algorithms that process set bits one by one, such as finding the lowest set bit in a bitmask for memory allocators.
-
-The BSR (Bit Scan Reverse) instruction finds the index of the most significant set bit (highest bit position containing a 1) in a source operand. The instruction is used to compute the floor of the binary logarithm, find the highest set bit for normalization, and implement priority encoders where higher bit positions represent higher priority. The scanning hardware uses a priority encoder similar to BSF but scanning from the most significant bit downward. The instruction completes in one cycle and is essential for floating-point normalization and finding the next power of two.
-
-The SHL instruction shifts the bits of the first operand to the left by the number of positions specified by the second operand. Bits shifted out of the most significant position are lost, and zeros are shifted into the least significant positions. Shifting left by one position multiplies the value by two for unsigned integers. The instruction uses a barrel shifter, a combinational circuit that can shift by any amount in a single cycle. The barrel shifter consists of a logarithmic tree of multiplexers, with six levels for 64-bit shifts and nine levels for 512-bit shifts. The carry flag is set to the last bit shifted out, and the overflow flag is set if the sign of the result differs from the expected sign.
-
-The SHR instruction shifts the bits of the first operand to the right by the number of positions specified by the second operand. Bits shifted out of the least significant position are lost, and zeros are shifted into the most significant positions. Shifting right by one position divides the value by two for unsigned integers. The instruction uses the same barrel shifter as SHL but with the shift direction reversed. The carry flag is set to the last bit shifted out of the least significant position, and the sign flag is cleared because zeros are shifted into the most significant position.
-
----
-
-## Section 4: Control Flow Instructions
-
-The JMP instruction transfers execution control to a specified address unconditionally. The instruction pointer is set to the target address, and execution continues from that location. The target can be specified as an immediate address (direct jump), a register (indirect jump), or a memory location (memory indirect jump). The instruction pipeline is flushed when a JMP executes because the processor cannot predict the new instruction stream with certainty, creating a small bubble of 2-3 cycles while the new instructions are fetched and decoded. Far jumps that change the code segment also load a new segment descriptor and check permissions.
-
-The CALL instruction transfers control to a subroutine while saving the return address on a hardware return stack. The return address (the address of the instruction following the CALL) is pushed onto a 64-entry hardware return stack that is separate from the software stack and not accessible to programs, preventing corruption of return addresses. The target address is computed using the same addressing modes as JMP, and the instruction pointer is set to that address. For far calls that change the code segment, the return address includes both the segment and offset. The hardware return stack enables accurate return prediction and supports nested calls up to 64 levels deep.
-
-The RET instruction returns control from a subroutine to the calling function by popping the return address from the hardware return stack and writing it to the instruction pointer. If the return stack is empty, a return stack underflow exception is raised. For far returns, the return address includes a segment selector, and the hardware loads the segment descriptor and checks execute permission. The instruction can also include an immediate stack adjustment that adds a constant to the software stack pointer after the return, implementing the "callee cleans the stack" calling convention used by the Pascal language and some C compilers for variadic functions.
-
-The BRANCH instruction transfers control to a target address if a specified condition is true based on the condition flags, and falls through to the next instruction if the condition is false. The condition is encoded in the flags field, with 16 possible conditions including equal (EQ), not equal (NE), signed less than (LT), signed greater than (GT), unsigned lower (LO), unsigned higher (HI), carry set (CS), carry clear (CC), overflow set (VS), overflow clear (VC), negative (MI), and positive or zero (PL). The branch predictor uses a neural network that achieves 98 percent accuracy for AI workloads, with a zero-cycle prediction mechanism that stores prediction bits in the I-cache tag array for immediate availability in the fetch stage.
-
----
-
-## Section 5: Vector and SIMD Instructions
-
-The ADDPS instruction performs element-wise addition of packed single-precision floating-point values, processing 4, 8, 16, or 32 elements in a single instruction depending on the vector length selected. The floating-point adder unit contains multiple parallel adders that operate independently on each pair of elements, with the number of adders matching the vector length. The addition follows IEEE 754 standards, handling special values correctly and supporting configurable rounding modes. The instruction is used for vector addition in graphics, scientific computing, and machine learning, where processing multiple data elements simultaneously provides 4 to 32 times the throughput of scalar addition.
-
-The MULPS instruction performs element-wise multiplication of packed single-precision floating-point values with the same vector length options as ADDPS. The floating-point multiplier uses a Wallace tree reduction for the mantissa product, followed by exponent addition and normalization. The multiplication completes in a single cycle for vector lengths up to 512 bits, with the result rounded according to the specified rounding mode. This instruction is essential for scaling vectors, computing dot products (in combination with ADDPS), and implementing matrix multiplication, where each output element is the sum of products of corresponding elements from a row and a column.
-
-The DOT instruction computes the dot product (scalar product) of two vectors by summing the element-wise products of corresponding elements. The instruction performs N multiplications in parallel using the multiplier array, then reduces the N products to a single sum using a reduction tree with log2(N) levels. For 16-element vectors (512 bits), the reduction has 4 levels, resulting in a total latency of 5 cycles (1 cycle for multiplication, 4 cycles for reduction, plus 1 cycle for rounding). The dot product can be accumulated in higher precision than the inputs, with mixed-precision mode multiplying single-precision inputs, producing double-precision products, and accumulating in extended-precision (80-bit) temporary to reduce rounding error.
-
-The CONV instruction performs a 2D convolution operation in constant time using a dedicated systolic array of multiply-accumulate units sized to match the kernel (3x3, 5x5, or 7x7). The input is streamed through the systolic array, with each MAC unit computing one element of the output feature map. The entire convolution completes in O(height × width) cycles, independent of kernel size. For a 3x3 kernel on a 224x224 image, the instruction completes in approximately 50,176 cycles, compared to 451,584 multiplications and additions for a scalar implementation. The instruction supports configurable kernel size, stride, padding mode, and data type (32-bit float, 16-bit float, or 8-bit integer).
-
-The SHUFPS instruction reorders elements within a vector by selecting elements from two source vectors and placing them in arbitrary positions in the destination vector according to an 8-bit shuffle pattern. The shuffle network is a crossbar switch that can route any input element to any output position in a single cycle. The pattern is divided into 2-bit fields, each specifying which source element goes into a destination position, with values 0-3 selecting from the first source and 4-7 selecting from the second source. This instruction is essential for data reorganization, transposing matrices, and preparing data for SIMD operations such as the Fast Fourier Transform and complex multiplication.
-
----
-
-## Section 6: Advanced Math Functions
-
-The EXP instruction computes the exponential function e raised to the power of the source operand using a minimax polynomial approximation with 14 terms, accurate to within 1 unit in the last place (ULP). The algorithm first reduces the input x to the range [-ln2/2, ln2/2] by subtracting an integer multiple of ln2, then evaluates the polynomial using Horner's method for numerical stability. The integer part becomes the exponent of the result, which is applied by adding it to the exponent field of the floating-point result. The instruction completes in 15 cycles for single-precision, 22 cycles for double-precision, and 8 cycles for reduced-precision mode with 10 ULP accuracy.
-
-The LOG instruction computes the natural logarithm of the source operand using a minimax polynomial of degree 12 for single-precision and 18 for double-precision. The input x is normalized to the range [1, 2) by extracting the exponent and mantissa, then ln(x) = ln(mantissa) + exponent × ln(2). The reduced-range logarithm is computed using a polynomial, and the result is constructed by adding the exponent term. If the source is zero or negative, the instruction raises an invalid operation exception and returns a NaN. The instruction completes in 18 cycles for single-precision, 28 cycles for double-precision, and 10 cycles for reduced-precision mode.
-
-The SQRT instruction computes the square root of the source operand using a fast Newton-Raphson iteration with a hardware seed. The input x is normalized to the range [1, 4) by adjusting the exponent, then an initial approximation of 1/sqrt(x) is obtained from a lookup table indexed by the top bits of the mantissa. The approximation is refined using two iterations of the Newton-Raphson formula y = y × (3 - x × y^2) / 2, then the result is computed as x × y. For double-precision, three iterations are used, and for reduced-precision mode, one iteration is used. The instruction completes in 8 cycles for single-precision, 14 cycles for double-precision, and 4 cycles for reduced-precision mode.
-
-The RSQRT instruction computes the reciprocal square root (1 / sqrt(x)) using the same algorithm as SQRT but returning the reciprocal directly. The Newton-Raphson iteration for reciprocal square root converges to 1/sqrt(x) without requiring a division at the end, making it faster than computing sqrt followed by division. This instruction is critical for vector normalization, where dividing each component by the length is equivalent to multiplying by the reciprocal square root of the sum of squares. The instruction completes in 6 cycles for single-precision, 12 cycles for double-precision, and 3 cycles for reduced-precision mode.
-
-The ERF instruction computes the error function, which is the integral of the Gaussian distribution, using a rational approximation with polynomial numerator and denominator. For small |x| (< 0.5), a Taylor series expansion is used. For large |x| (> 3), the complementary error function is used via the approximation erf(x) = 1 - erfc(x). For intermediate values, a minimax rational approximation of degree 6/6 is used. The output ranges from -1 to 1, with erf(0) = 0, erf(1) ≈ 0.8427, and erf(∞) = 1. The instruction completes in 20 cycles for single-precision, 35 cycles for double-precision, and 12 cycles for reduced-precision mode.
+| Format | Encoding | Bits | Range | Precision |
+|--------|----------|------|-------|-----------|
+| INT4 | Signed 4-bit integer | 4 | -8 to 7 | 1 bit |
+| UINT4 | Unsigned 4-bit integer | 4 | 0 to 15 | 1 bit |
+| INT8 | Signed 8-bit integer | 8 | -128 to 127 | 1 bit |
+| UINT8 | Unsigned 8-bit integer | 8 | 0 to 255 | 1 bit |
+| INT16 | Signed 16-bit integer | 16 | -32,768 to 32,767 | 1 bit |
+| UINT16 | Unsigned 16-bit integer | 16 | 0 to 65,535 | 1 bit |
+| INT32 | Signed 32-bit integer | 32 | -2.1e9 to 2.1e9 | 1 bit |
+| UINT32 | Unsigned 32-bit integer | 32 | 0 to 4.3e9 | 1 bit |
+| INT64 | Signed 64-bit integer | 64 | -9.2e18 to 9.2e18 | 1 bit |
+| FP16 | IEEE 754 half-precision | 16 | ±65,504 | ~3.3 decimal digits |
+| BF16 | Brain floating-point | 16 | ±3.4e38 | ~2.3 decimal digits |
+| FP32 | IEEE 754 single-precision | 32 | ±3.4e38 | ~7.2 decimal digits |
+| FP64 | IEEE 754 double-precision | 64 | ±1.8e308 | ~15.9 decimal digits |
+| POSIT16 | Posit Type-III 16-bit | 16 | ±1.2e10 | ~4 decimal digits |
+| POSIT32 | Posit Type-III 32-bit | 32 | ±1.0e76 | ~8 decimal digits |
 
 ---
 
-## Section 7: INT4 Inference Instructions
+# Section 2: Data Movement Instructions
 
-The MATMULI4 instruction performs a matrix multiplication of two INT4 matrices, accumulating the results in 32-bit integers. The instruction uses a systolic array of 64x64 multiply-accumulate units, with the first matrix streamed from the left, the second from the top, and results accumulating at the bottom. The array can compute a 64x64x64 matrix multiplication in 64 cycles, which is 4,096 multiply-add operations per cycle. For larger matrices, the hardware tiles the multiplication automatically, loading tiles from memory as needed. The instruction supports optional bias addition and activation functions (ReLU, GELU) in the same pass, eliminating separate passes through memory.
+## 2.1 MOV - Move Data
 
-The SOFTMAXI4 instruction computes the softmax function on INT4 logits by first dequantizing to FP16 using a learned scale factor, then computing the softmax in FP16 using the same algorithm as the standard SOFTMAX instruction, and finally quantizing back to INT4. The dequantization is `fp16 = int4 × scale`, and the quantization is `int4 = clamp(round(fp16 / scale), -8, 7)`. The entire operation takes 32 cycles for a 512-element vector, compared to 28 cycles for the FP16 version, but the 4x memory bandwidth reduction from using INT4 provides an overall speedup for models that can tolerate the small accuracy loss (less than 1 percent).
+**Description:** Copies data from source to destination without modifying the source. Supports register-to-register, memory-to-register, register-to-memory, and immediate-to-register transfers.
 
-The ATTENTIONI4 instruction computes the scaled dot-product attention mechanism entirely in INT4, with FP16 used only for the softmax. The instruction takes six operands: output address, query address, key address, value address, sequence length, and head dimension. It computes attention = softmax(Q × K^T / sqrt(d)) × V, with Q×K^T multiplication using the MATMULI4 systolic array, scaling by a right shift, softmax using SOFTMAXI4, and multiplication by V using another MATMULI4 operation. For a sequence length of 2048 and head dimension of 64, the instruction completes in 125,000 cycles, compared to 1,000,000 cycles for a software implementation, an 8x speedup.
+**Math Core Encoding:** Opcode 0x01, 20-bit header, 2 operand descriptors
 
-The GELUI4 instruction computes the GELU activation function on INT4 values using a lookup table with 16 entries, one for each possible 4-bit value. The lookup table is precomputed by the hardware and can be updated by software. The instruction reads the input INT4 value, uses it as an index into the table, and outputs the table value in one cycle. The accuracy is within 1 percent of the true GELU for values in the -8 to 7 range, which is sufficient for neural network inference. The approximate mode uses a simpler table with only 8 entries, achieving 0.5 cycle latency with 2 percent accuracy loss.
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | Destination location |
+| Src | Register, Memory, or Immediate | 8-512 bits | Source location |
 
-The LAYERNORMI4 instruction computes layer normalization on INT4 tensors by dequantizing to FP16, computing the mean and variance using a reduction tree, normalizing each element (x - mean) / sqrt(variance + epsilon), applying learned scale and bias, and quantizing back to INT4. The mean and variance are computed in FP16 with 32-bit accumulation to prevent overflow, and the division uses the RSQRT instruction followed by multiplication. The entire operation takes 50 cycles for a 512-element vector, which is slower than the FP16 version (25 cycles), but the 4x memory bandwidth reduction and the ability to keep the entire model in INT4 provide an overall benefit.
+**Logic Core Encoding:** Opcode 0x01 (7-bit), 12-bit header, 2 operand descriptors
 
-The RESIDUALI4 instruction adds a residual connection between two INT4 tensors by dequantizing both to FP16, adding them, and quantizing the result back to INT4. The addition is performed in FP16 to preserve accuracy because adding two 4-bit values can overflow the 4-bit range. The dequantization and quantization use the same scale factor for both inputs, and the operation is vectorized across 512 bits, processing 32 elements per cycle. The total latency is 5 cycles, with 2 cycles for dequantization, 1 cycle for addition, and 2 cycles for quantization. This instruction is used after the attention mechanism and after the feed-forward network in transformer models.
+**System Core Encoding:** Opcode 0x01 (6-bit), 8-bit header, 2 operand descriptors
 
----
+**Assembly Syntax:**
+```
+MOV destination, source
+MOV.NT destination, source    ; Non-temporal (bypass cache)
+MOV.REMOTE @blade:addr, source ; Move to remote blade
+```
 
-## Section 8: Probabilistic Inference Instructions
+**Examples:**
+```assembly
+; Register to register
+MOV R1, R2          ; Copy R2 to R1 (Math/Logic core)
+MOV V1, V2          ; Copy vector V2 to V1 (Math core only)
 
-The HMM_FORWARD instruction computes one step of the forward algorithm for a Hidden Markov Model, which calculates the probability of observing a sequence of emissions given an HMM. The instruction computes for each current state j: new_forward[j] = emission[j] × sum_over_i( old_forward[i] × transition[i][j] ). The computation uses all Math cores in parallel, with each core computing one term of the inner sum, then a reduction network sums the terms using a tree of adders. For a 256-state HMM, the instruction completes in 10 cycles, compared to 65,536 multiply-add operations in software, a speedup of over 6,500 times. The instruction also computes a scaling factor to prevent underflow and supports log-space probabilities where addition replaces multiplication.
+; Immediate to register
+MOV R1, #42         ; Load 42 into R1
+MOV V1, #1.0        ; Load 1.0 into all elements of vector V1
 
-The HMM_VITERBI instruction computes one step of the Viterbi algorithm for finding the most probable state sequence. The instruction computes for each current state j: new_viterbi[j] = emission[j] × max_i( old_viterbi[i] × transition[i][j] ). The computation is similar to HMM_FORWARD, but the reduction network computes the maximum value and its index instead of the sum. The backpointer for each state (the index i that produced the maximum) is stored in a backpointer matrix used to reconstruct the most probable state sequence after processing all observations. The instruction completes in the same 10 cycles as HMM_FORWARD.
+; Memory to register
+MOV R1, [R2]        ; Load from address in R2
+MOV R1, [R2 + 64]   ; Load from address R2 + 64
+MOV R1, [R2 + R3*8] ; Load from address R2 + R3*8
 
-The SOFTMAX instruction computes the softmax function over a vector of logits, transforming real numbers into a probability distribution where all outputs are positive and sum to 1. The instruction first finds the maximum value in the vector for numerical stability, then computes exponentials of each element minus the maximum, sums the exponentials, and divides each exponential by the sum. For a 512-element vector, the instruction completes in 28 cycles: 8 cycles for the reduction tree to find the maximum, 15 cycles for exponentials in parallel, and 5 cycles for the final division. The instruction supports temperature scaling, sparse softmax (only top-k elements), and log-softmax for cross-entropy loss calculations.
+; Register to memory
+MOV [R1], R2        ; Store R2 to address in R1
+MOV.NT [R1], R2     ; Non-temporal store (bypass cache)
 
-The LOG_SUM_EXP instruction computes the logarithm of the sum of exponentials: log( Σ_i e^{x_i} ). This operation appears frequently in log-space HMM computations and is essential for numerical stability. The instruction uses the stable formula log_sum_exp(x) = max(x) + log( Σ_i e^{x_i - max(x)} ), which prevents overflow. The instruction first finds the maximum using a reduction tree, then computes exponentials of shifted values, sums them, takes the logarithm, and adds back the maximum. The total latency is 35 cycles for a 512-element vector, plus 2 cycles for the reduction. A specialized two-input log-add mode completes in a single cycle.
+; Remote memory
+MOV R1, @4:0x10000  ; Load from blade 4, address 0x10000
+MOV @4:0x10000, R1  ; Store to blade 4, address 0x10000
 
-The SPARSE_DOT instruction computes the dot product of a dense vector and a sparse vector represented as an index-value list. The instruction streams the index and value lists from memory, loading the corresponding dense vector elements and multiplying them by the sparse values. The products are accumulated in a high-precision accumulator. For a sparse vector with 32 non-zero entries, the instruction takes approximately 32 cycles, compared to 256 cycles for a dense dot product. The instruction supports 16-bit, 32-bit, and 64-bit indices, and 8-bit, 16-bit, and 32-bit values. Double-buffered streaming mode prefetches the next block of index-value pairs while computing the current block, hiding memory latency.
-
----
-
-## Section 9: System Instructions
-
-The SYSENTER instruction transfers control from user code to the operating system kernel, changing the privilege level, saving the user context, and jumping to a predefined kernel entry point. The instruction saves the user instruction pointer, stack pointer, and flags in hidden registers, loads the kernel code segment, stack pointer, and instruction pointer from model-specific registers, and changes the privilege level to 0. The entire transition takes approximately 15 cycles, significantly faster than an interrupt or trap gate which can take 100 cycles or more. The instruction can only be executed from user mode (privilege level 3); executing it from kernel mode raises an exception.
-
-The SYSEXIT instruction returns control from kernel mode to user code after a system call, restoring the user context saved by SYSENTER. The instruction loads the user code segment, stack pointer, and instruction pointer from the saved context, changes the privilege level to 3, and resumes execution at the instruction following the original SYSENTER. The transition takes approximately 12 cycles. The instruction can only be executed from kernel mode (privilege level 0); executing it from user mode raises an exception. The kernel can modify the saved user registers before executing SYSEXIT to return results to the user program.
-
-The CFG_VIDEO instruction configures a video output tile to read a memory region as a framebuffer, converting the memory contents to display signals (HDMI, DisplayPort, etc.). The instruction takes the framebuffer base address, width, height, color format (RGB888, RGB101010, RGBA8888, YUV422, YUV420, or monochrome), and refresh rate. The video output tile continuously scans the framebuffer at the specified refresh rate, generating the video signal. Double-buffering mode configures a second framebuffer, with the tile alternating between the two buffers on each frame. The instruction must be executed by a System core at privilege level 0.
-
-The CFG_AUDIO instruction configures an audio output tile to read a circular buffer from memory and send samples to a DAC. The instruction takes the circular buffer base address, buffer size, sample rate, bit depth, channel count, and channel mapping. The audio tile maintains a read pointer that advances as samples are consumed, wrapping to the beginning when the end is reached. The tile generates an interrupt when the buffer is half-empty, allowing software to refill it without underflow. Hardware-accelerated mixing allows multiple sources to write to different regions of the buffer, with the tile mixing them automatically.
-
-The RING_INIT instruction initializes a hardware-managed circular buffer for streaming data between producers and consumers. The instruction takes the buffer base address, segment size, number of segments, and a pointer to a ring control structure. The hardware maintains read and write pointers in the control structure, and the producer uses RING_WRITE to add data while the consumer advances the read pointer. Interrupts can be enabled for half-empty (consumer needs more data) or half-full (producer needs to consume data) conditions. The ring control structure is accessible to software, allowing it to check available space and data without accessing hardware registers.
-
----
-
-## Section 10: Interconnect Instructions
-
-The MAP_STORAGE instruction assigns a range of physical memory addresses to NAND flash storage, making flash accessible via standard load and store instructions. After mapping, a load from the target address triggers a hardware flash read: the memory controller calculates which flash chip, block, page, and offset are needed, sends a read command to the flash chip, waits 50 microseconds for the page to be read, and transfers the data to the requesting core. The instruction takes the flash chip identifier, starting flash block address, target memory base address, and size. The mapping is stored in the address translation table, and writes are also supported with hardware erase-before-write.
-
-The EXPORT_MEMORY instruction makes a range of local memory accessible to other blades on the optical fabric, enabling distributed shared memory. After export, remote blades can load from and store to the exported region using standard memory access instructions, with hardware maintaining cache coherence. The instruction takes the local base address, size, remote blade identifier (or broadcast for all blades), remote base address, and access permissions (read, write, execute). The directory cache on the home blade tracks which blades have cached copies, and the coherence protocol sends invalidation messages when a write occurs.
-
-The REMOTE_CALL instruction executes a function on a remote blade and returns the result, implementing hardware-accelerated remote procedure calls. The instruction takes the target blade identifier, target function address, argument count, argument list address, and result return address. The hardware sends a request packet across the optical fabric to the target blade, which schedules the function for execution on the specified core type (Math, Logic, or System). When the function completes, the target sends a response packet back to the caller containing the return value. Synchronous calls stall the calling core until the response arrives; asynchronous calls return immediately and deliver the result via interrupt or polling.
-
-The RACK_UNIFY instruction configures the entire rack as a single shared memory space, transforming the rack from a cluster of independent computers into a single large shared-memory machine. The instruction takes the blade range (starting and ending blade), global base address, and interleaving granularity. After unification, any blade can access any memory location on any other blade using standard load and store instructions, with the hardware directory cache routing requests to the blade that holds the data. The interleaving mode can be round-robin (addresses distributed across blades), stripe (blade 0 memory at lowest addresses, blade 1 next), or first-touch (memory allocated on the blade that first writes to it).
-
-The BROADCAST instruction sends the following instruction stream to all blades in the rack simultaneously, with all blades executing the broadcasted instructions in parallel. The broadcast stream can include any instructions, including REMOTE_CALL, WARP_SYNC, and even nested BROADCAST instructions, and is terminated by a BROADCAST_END instruction. The instruction is used for initializing system state, distributing configuration parameters, and launching parallel computations across the entire rack. The wait mode causes the broadcasting blade to stall until all blades have finished executing the broadcasted stream, while the other mode excludes the broadcasting blade, which continues execution in parallel.
-
-The BARRIER_SYNC instruction implements a global barrier that synchronizes all cores across all linked blades. Every core must execute BARRIER_SYNC before any core proceeds. The hardware tracks how many cores have reached the barrier across all blades, and when the count reaches the total number of cores (or a configured subset), all waiting cores are released simultaneously. The barrier can be configured to ignore failed cores (e.g., cores that have been disabled due to errors), and a timeout mechanism prevents deadlock if a core never arrives. This instruction is used for major phase transitions in parallel algorithms, such as synchronizing gradients in distributed training.
+; Memory-mapped flash
+MOV R1, [0x100000000] ; Load from flash address
+```
 
 ---
 
-## Section 11: Memory Management Instructions
+## 2.2 MOVSX - Move with Sign Extension
 
-The SEGMENT_CREATE instruction creates a new segment in the memory segment tree, which replaces traditional page tables with a hierarchical capability-based system. The instruction takes the parent segment identifier, base address, size (as a power-of-two exponent), owner identifier, permissions mask, and a pointer to a segment descriptor buffer. The new segment descriptor is allocated from the segment table and initialized with the specified parameters. The base address must be aligned to the segment size, and the size can range from 4KB (exponent 0) to 1 exabyte (exponent 48). The instruction must be executed at privilege level 0 or by an owner with the "create child" permission on the parent segment.
+**Description:** Moves a smaller signed integer into a larger register, preserving the sign by replicating the most significant bit of the source across the upper bits of the destination.
 
-The SEGMENT_DELETE instruction removes a segment and all its children from the segment tree, making the memory previously covered by the segment inaccessible. The instruction takes the segment identifier to delete. The segment and all its children are marked as deleted in the segment table, and the TLB is invalidated for all addresses covered by the deleted segments. If the "force" flag is set, the deletion proceeds even if other cores are currently accessing the segment (those accesses may fault after deletion). If the "lazy" flag is set, the segment is marked as deleted but the physical memory is not reclaimed until all references are gone.
+**Math Core Encoding:** Opcode 0x02, 20-bit header, 2 operand descriptors
 
-The SEGMENT_MODIFY instruction changes the permissions or owner of an existing segment. The instruction takes the segment identifier, the new permissions mask (or owner identifier), and a flag indicating which field to modify. The instruction must be executed by the segment owner or an ancestor owner. The specified field in the segment descriptor is updated, and the TLB is invalidated for all addresses in the segment. If the "seal" flag is set, the segment becomes immutable and no further modifications are possible (sealing is irreversible). Permission changes take effect immediately for all future accesses.
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 16-512 bits | Destination must be larger than source |
+| Src | Register, Memory, or Immediate | 8-128 bits | Source must be smaller than destination |
 
-The CAPABILITY_GRANT instruction creates a cryptographically signed capability token that delegates access to a memory segment to another owner. The instruction takes the segment identifier, target owner identifier, maximum permissions to grant, expiration timestamp, and a pointer to a token buffer. The token includes the segment identifier, target owner, permissions, expiration, and a cryptographic signature using the granting blade's private key. The token can be transmitted over any communication channel (including insecure channels) because the signature prevents forgery. The instruction must be executed by the segment owner or an owner with delegate permission on the segment.
+**Logic Core Encoding:** Opcode 0x02 (7-bit), 12-bit header, 2 operand descriptors
 
-The CAPABILITY_ACCEPT instruction imports a capability token and creates a local segment that refers to the delegated memory. The instruction takes a pointer to the token buffer, the desired local segment name (or zero for automatic), and a pointer to a descriptor buffer. The token is verified: the signature is checked, the expiration is validated, and the target owner is matched against the current owner. If verification succeeds, a new segment descriptor is created in the local segment table pointing to the remote memory (or local memory if the grant was local). The new segment's identifier is returned in the descriptor buffer.
+**System Core Encoding:** Not available
 
-The SEGMENT_LOOKUP instruction returns the segment descriptor for a given virtual address or segment identifier without performing any access checks. The instruction takes the virtual address (or segment ID) and a pointer to a descriptor buffer. The address translation hardware walks the segment tree to find the leaf segment containing the address, and copies the segment descriptor to the buffer. If the address is not mapped, the instruction returns with the carry flag set. The "walk tree" flag returns an array of descriptors for all ancestors of the address (root, intermediate segments, and leaf), which is used for debugging protection faults.
+**Assembly Syntax:**
+```
+MOVSX destination, source
+MOVSX.S destination, source   ; Saturating sign extension
+```
 
-The TLB_INVALIDATE instruction removes one or more entries from the Translation Lookaside Buffer (TLB), which caches segment tree lookups. The instruction takes an address range to invalidate (or a segment ID). The specified TLB entries are marked as invalid, causing future accesses to those addresses to trigger a segment tree walk. The instruction supports invalidating a single page, a range of pages, all entries, or entries by segment ID. The "global" flag sends the invalidation to all cores on the blade (or all blades if combined with BROADCAST). TLB invalidation is required after segment descriptors are modified or deleted to prevent stale translations.
+**Examples:**
+```assembly
+; Sign extend 8-bit to 32-bit
+MOVSX R1, R2        ; R2 contains 8-bit signed value, R1 gets sign-extended 32-bit
+
+; Sign extend from memory
+MOVSX R1, [R2]      ; Load byte from address R2, sign extend to 32-bit
+
+; Sign extend 16-bit to 64-bit
+MOVSX R1, R2        ; R2 contains 16-bit signed value, R1 gets sign-extended 64-bit
+
+; Saturating sign extension
+MOVSX.S R1, R2      ; Clamp to min/max if overflow would occur
+
+; Sign extend from immediate
+MOVSX R1, #-42      ; Sign extend immediate -42 to 32-bit
+```
+
+---
+
+## 2.3 MOVZX - Move with Zero Extension
+
+**Description:** Moves a smaller unsigned integer into a larger register, filling the upper bits with zeros.
+
+**Math Core Encoding:** Opcode 0x03, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 16-512 bits | Destination must be larger than source |
+| Src | Register, Memory, or Immediate | 8-128 bits | Source must be smaller than destination |
+
+**Logic Core Encoding:** Opcode 0x03 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Assembly Syntax:**
+```
+MOVZX destination, source
+```
+
+**Examples:**
+```assembly
+; Zero extend 8-bit to 32-bit
+MOVZX R1, R2        ; R2 contains 8-bit value, R1 gets zero-extended 32-bit
+
+; Zero extend from memory
+MOVZX R1, [R2]      ; Load byte from address R2, zero extend to 32-bit
+
+; Zero extend 16-bit to 64-bit
+MOVZX R1, R2        ; R2 contains 16-bit value, R1 gets zero-extended 64-bit
+
+; Zero extend from immediate
+MOVZX R1, #255      ; Zero extend immediate 255 to 32-bit
+```
 
 ---
 
-## Section 12: Protection Instructions
+## 2.4 LEA - Load Effective Address
 
-The OWNER_GET instruction returns the current owner identifier and the ancestor chain (the list of parent owners from the current owner up to the root owner 0). The instruction takes a pointer to a buffer for the owner identifier and a pointer to a buffer for the ancestor chain. The current owner identifier is stored in a privileged register and is written to the first buffer. The ancestor chain is traversed from the current owner up to owner 0, with each ancestor's owner ID written to the second buffer. The instruction completes in a single cycle and is used by the operating system to determine its privilege level and by applications to query their security context.
+**Description:** Computes a memory address without accessing memory and stores the address in a register. Can perform addition and scaling in a single instruction.
 
-The OWNER_SET_PARENT instruction modifies the parent of an owner in the owner hierarchy, which can only be executed by the root owner (owner 0). The instruction takes the owner identifier to modify and the new parent owner identifier. The owner hierarchy table is updated to set the parent of the specified owner to the new parent. If the "create if missing" flag is set, the owner entry is created if it does not exist. If the "move subtree" flag is set, all descendants of the owner are moved as well. Changes take effect immediately for all cores and are used during system initialization to build the owner tree.
+**Math Core Encoding:** Opcode 0x04, 20-bit header, 2 operand descriptors
 
-The RING_SET instruction configures the mapping from traditional x86-style ring numbers (0-3) to the Sirius NEXUS owner hierarchy for backward compatibility with legacy operating systems. The instruction takes the ring number (0-3) and the owner identifier to map it to. The mapping is stored in a table that the hardware consults when a ring-relative instruction is executed. The "set default" flag maps all unconfigured rings to the specified owner, and the "clear mapping" flag removes the mapping for the specified ring. This allows legacy operating systems expecting a ring-based protection model to run on Sirius NEXUS hardware.
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 64-bit | Destination for computed address |
+| Src | Memory expression | N/A | Address expression (evaluated, not accessed) |
 
-The IRQ_SET instruction assigns an interrupt request line (IRQ) to a specific owner, enabling multiple operating systems or virtual machines to share hardware interrupts. The instruction takes the IRQ number and the target owner identifier. The interrupt controller is programmed to deliver the specified IRQ to the target owner, who must have registered an interrupt handler via the interrupt descriptor table. The "enable" flag ensures the IRQ is enabled after assignment, the "disable" flag disables the IRQ, and the "steal" flag forcibly reassigns the IRQ from its current owner without requiring that owner's cooperation.
+**Logic Core Encoding:** Opcode 0x04 (7-bit), 12-bit header, 2 operand descriptors
 
-The IO_MAP instruction maps a memory-mapped I/O device into the segment tree, making device registers accessible via normal load and store instructions. The instruction takes the physical base address of the I/O device, the size in bytes, the target segment (where to create the mapping), and the permissions. The device type informs the hardware about special access semantics, with supported types including memory, PCI configuration space, USB host controller, storage controller, network interface, video, and audio. Accesses to mapped addresses bypass the cache by default unless caching is explicitly enabled. The instruction must be executed at privilege level 0.
+**System Core Encoding:** Opcode 0x02 (6-bit), 8-bit header, 2 operand descriptors
 
-The SEGMENT_WALK instruction traverses the segment tree from the root to the leaf containing a specified address, returning the full path of segment descriptors for debugging, memory analysis, and protection fault diagnosis. The instruction takes the virtual address to walk, a pointer to a buffer for the descriptor array, and the maximum number of descriptors to return. The hardware walks the segment tree from the root, copying each segment descriptor to the buffer until a leaf segment is reached or the maximum count is exceeded. The "validate only" flag performs the walk but writes no descriptors, returning only the success or failure status.
+**Assembly Syntax:**
+```
+LEA destination, [address expression]
+LEA destination, @blade:address   ; Remote address descriptor
+```
+
+**Examples:**
+```assembly
+; Simple address copy
+LEA R1, [R2]        ; R1 = R2
+
+; Add constant to register
+LEA R1, [R2 + 64]   ; R1 = R2 + 64
+
+; Add two registers
+LEA R1, [R2 + R3]   ; R1 = R2 + R3
+
+; Add with scaling (array indexing)
+LEA R1, [R2 + R3*8] ; R1 = R2 + (R3 * 8)
+
+; Three-operand addition
+LEA R1, [R2 + R3 + 64]  ; R1 = R2 + R3 + 64
+
+; Address of array element
+LEA R1, [array_base + R2*4]  ; R1 = array_base + (R2 * 4)
+
+; Remote address descriptor
+LEA R1, @4:0x10000  ; R1 = remote address descriptor for blade 4
+```
 
 ---
 
-## Section 13: Instruction Set Summary
+## 2.5 XCHG - Exchange Data
 
-The complete Sirius NEXUS instruction set comprises 132 instructions across 20 functional categories. Math cores implement all 132 instructions, Logic cores implement a 30-instruction subset focused on branches and integer arithmetic, and System cores implement a 24-instruction subset for I/O and memory management. The instruction encoding is variable-length from 16 to 512 bits, with an average size of 28 bits (3.5 bytes) thanks to the Register Data Type Mapping feature.
+**Description:** Atomically exchanges the contents of two operands. The exchange is indivisible with respect to other cores and DMA devices.
 
-Data movement instructions include MOV, MOVSX, MOVZX, LEA, and XCHG. These instructions transfer data between registers, memory, and immediate values, with sign and zero extension for integer promotion. Arithmetic instructions include ADD, SUB, MUL, IMUL, DIV, IDIV, INC, DEC, and FMA. These instructions perform integer and floating-point arithmetic with condition flag updates and support for vector and saturating modes.
+**Math Core Encoding:** Opcode 0x05, 20-bit header, 2 operand descriptors
 
-Logic and bit instructions include AND, OR, XOR, NOT, TEST, BSF, BSR, SHL, and SHR. These instructions perform bitwise operations and bit scans. Control flow instructions include JMP, CALL, RET, and BRANCH. These instructions transfer execution control, with conditional branches based on 16 condition codes.
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | First operand (receives second's value) |
+| Src | Register or Memory | 8-512 bits | Second operand (receives first's value) |
 
-Vector and SIMD instructions include ADDPS, MULPS, DOT, CONV, and SHUFPS. These instructions perform packed floating-point operations, dot products, convolutions, and element shuffling. Advanced math functions include EXP, LOG, SQRT, RSQRT, ERF, and GAMMA. These instructions compute transcendental functions with high accuracy.
+**Logic Core Encoding:** Opcode 0x05 (7-bit), 12-bit header, 2 operand descriptors
 
-INT4 inference instructions include MATMULI4, SOFTMAXI4, ATTENTIONI4, GELUI4, LAYERNORMI4, and RESIDUALI4. These instructions are optimized for quantized neural network inference. Probabilistic instructions include HMM_FORWARD, HMM_VITERBI, SOFTMAX, LOG_SUM_EXP, and SPARSE_DOT. These instructions accelerate Hidden Markov Models and attention mechanisms.
+**System Core Encoding:** Opcode 0x03 (6-bit), 8-bit header, 2 operand descriptors
 
-System instructions include SYSENTER, SYSEXIT, CFG_VIDEO, CFG_AUDIO, RING_INIT, RING_WRITE, and RING_SWAP. These instructions manage operating system transitions and I/O configuration. Interconnect instructions include MAP_STORAGE, EXPORT_MEMORY, REMOTE_CALL, LINK_STATUS, RACK_UNIFY, WARP_SYNC, REMOTE_ALLOC, BROADCAST, and BARRIER_SYNC. These instructions enable distributed shared memory across the optical fabric.
+**Assembly Syntax:**
+```
+XCHG operand1, operand2
+XCHG.A operand1, operand2    ; Acquire-release semantics
+XCHG.R operand1, operand2    ; Relaxed semantics
+XCHG.B operand1, operand2    ; Byte exchange (size override)
+```
 
-Memory management instructions include SEGMENT_CREATE, SEGMENT_DELETE, SEGMENT_MODIFY, CAPABILITY_GRANT, CAPABILITY_ACCEPT, SEGMENT_LOOKUP, and TLB_INVALIDATE. These instructions implement the segment tree protection model. Protection instructions include OWNER_GET, OWNER_SET_PARENT, RING_SET, IRQ_SET, IO_MAP, and SEGMENT_WALK. These instructions manage the owner hierarchy and device mappings.
+**Examples:**
+```assembly
+; Exchange register with memory (spinlock acquire)
+XCHG R1, [lock]     ; Atomically exchange R1 with lock variable
+
+; Exchange two registers
+XCHG R1, R2         ; Swap R1 and R2
+
+; Exchange with acquire-release semantics
+XCHG.A R1, [lock]   ; All previous memory ops complete before exchange
+
+; Byte exchange
+XCHG.B R1, [R2]     ; Exchange single byte
+
+; Double-word exchange
+XCHG R1, [R2]       ; Exchange 64-bit value
+
+; Remote memory exchange
+XCHG R1, @4:0x10000 ; Exchange with memory on blade 4
+```
 
 ---
+
+# Section 3: Arithmetic Instructions
+
+## 3.1 ADD - Add Operands
+
+**Description:** Performs binary addition of two operands and stores the result in the destination. Supports scalar, vector, and saturating modes.
+
+**Math Core Encoding:** Opcode 0x10, 20-bit header, 2-3 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | Destination (receives sum) |
+| Src | Register, Memory, or Immediate | 8-512 bits | Source to add |
+| Optional Src2 | Register, Memory, or Immediate | 8-512 bits | Second source (vector mode) |
+
+**Logic Core Encoding:** Opcode 0x10 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x04 (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF (zero), SF (sign), CF (carry), OF (overflow)
+
+**Assembly Syntax:**
+```
+ADD dest, src
+ADD.V dest, src1, src2    ; Vector element-wise add
+ADD.S dest, src           ; Saturating add
+ADD.C dest, src           ; Add with carry (from previous operation)
+```
+
+**Examples:**
+```assembly
+; Simple integer addition
+ADD R1, R2          ; R1 = R1 + R2
+
+; Addition with immediate
+ADD R1, #42         ; R1 = R1 + 42
+
+; Addition from memory
+ADD R1, [R2]        ; R1 = R1 + value at address R2
+
+; Vector addition
+ADD.V V1, V2, V3    ; V1[i] = V2[i] + V3[i] for all i
+
+; Broadcast scalar to vector
+ADD.V V1, V2, #1    ; V1[i] = V2[i] + 1 for all i
+
+; Saturating addition (clamps on overflow)
+ADD.S R1, R2        ; R1 = saturate(R1 + R2)
+
+; Add with carry (multi-precision)
+ADD R1, R2          ; Add low 64 bits, sets carry flag
+ADD.C R3, R4        ; Add high 64 bits with carry
+
+; Remote memory addition
+ADD R1, @4:0x10000  ; R1 = R1 + value at remote address
+```
+
+---
+
+## 3.2 SUB - Subtract Operands
+
+**Description:** Performs binary subtraction (dest - src) and stores the result in the destination.
+
+**Math Core Encoding:** Opcode 0x11, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | Destination (receives difference) |
+| Src | Register, Memory, or Immediate | 8-512 bits | Source to subtract |
+
+**Logic Core Encoding:** Opcode 0x11 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x05 (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF (zero), SF (sign), CF (borrow), OF (overflow)
+
+**Assembly Syntax:**
+```
+SUB dest, src
+SUB.V dest, src1, src2    ; Vector element-wise subtract
+SUB.S dest, src           ; Saturating subtract
+SUB.C dest, src           ; Subtract with borrow
+```
+
+**Examples:**
+```assembly
+; Simple integer subtraction
+SUB R1, R2          ; R1 = R1 - R2
+
+; Subtraction with immediate
+SUB R1, #42         ; R1 = R1 - 42
+
+; Pointer subtraction (difference in bytes)
+SUB R1, R2          ; R1 = R1 - R2 (distance between pointers)
+
+; Vector subtraction (image differencing)
+SUB.V V1, V2, V3    ; V1[i] = V2[i] - V3[i]
+
+; Saturating subtraction (clamps on underflow)
+SUB.S R1, R2        ; R1 = saturate(R1 - R2)
+
+; Subtract with borrow (multi-precision)
+SUB R1, R2          ; Subtract low 64 bits, sets borrow flag
+SUB.C R3, R4        ; Subtract high 64 bits with borrow
+```
+
+---
+
+## 3.3 MUL - Multiply Unsigned
+
+**Description:** Performs unsigned multiplication of two operands. The product is stored in a destination that must be twice the width of the operands.
+
+**Math Core Encoding:** Opcode 0x12, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 2× operand width | Destination for product |
+| Src | Register, Memory, or Immediate | 8-256 bits | Multiplier |
+
+**Logic Core Encoding:** Opcode 0x12 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (zero), SF (sign of high word), CF (if product exceeds dest width)
+
+**Assembly Syntax:**
+```
+MUL dest, src
+MUL.V dest, src1, src2    ; Vector element-wise multiply
+```
+
+**Examples:**
+```assembly
+; Simple unsigned multiplication
+MUL R1, R2          ; R1 = R1 * R2 (unsigned)
+
+; Multiplication with immediate
+MUL R1, #10         ; R1 = R1 * 10
+
+; Multiplication with memory operand
+MUL R1, [R2]        ; R1 = R1 * value at address R2
+
+; Vector multiplication (element-wise)
+MUL.V V1, V2, V3    ; V1[i] = V2[i] * V3[i]
+
+; Square calculation
+MUL R1, R1          ; R1 = R1 * R1 (square)
+
+; Scaling for fixed-point arithmetic
+MUL R1, #65536      ; Scale by 2^16
+SHR R1, R1, #16     ; Extract high 16 bits
+
+; Remote multiplication
+MUL R1, @4:0x10000  ; R1 = R1 * remote value
+```
+
+---
+
+## 3.4 IMUL - Multiply Signed
+
+**Description:** Performs signed multiplication of two operands using two's complement arithmetic.
+
+**Math Core Encoding:** Opcode 0x13, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 2× operand width | Destination for product |
+| Src | Register, Memory, or Immediate | 8-256 bits | Multiplier (signed) |
+
+**Logic Core Encoding:** Opcode 0x13 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (zero), SF (sign of high word), CF (if product exceeds dest width), OF (signed overflow)
+
+**Assembly Syntax:**
+```
+IMUL dest, src
+IMUL.V dest, src1, src2   ; Vector element-wise signed multiply
+```
+
+**Examples:**
+```assembly
+; Simple signed multiplication
+IMUL R1, R2         ; R1 = R1 * R2 (signed)
+
+; Multiplication with negative immediate
+IMUL R1, #-10       ; R1 = R1 * (-10)
+
+; Vector signed multiplication
+IMUL.V V1, V2, V3   ; V1[i] = V2[i] * V3[i] (signed)
+```
+
+---
+
+## 3.5 DIV - Divide Unsigned
+
+**Description:** Performs unsigned division of a 64-bit dividend by a 32-bit divisor, producing a 32-bit quotient and a 32-bit remainder.
+
+**Math Core Encoding:** Opcode 0x14, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dividend | Register pair | 64-bit | High word in R1, low word in R0 |
+| Divisor | Register or Memory | 32-bit | Divisor |
+
+**Logic Core Encoding:** Opcode 0x14 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (zero quotient), CF (division by zero)
+
+**Assembly Syntax:**
+```
+DIV dividend_high, divisor    ; Quotient in dividend_high, remainder in R0
+```
+
+**Examples:**
+```assembly
+; Simple unsigned division
+DIV R1, R2          ; Divide (R1,R0) by R2, quotient in R1, remainder in R0
+
+; Division of 32-bit value
+MOVZX R1, R3        ; Zero-extend 32-bit to 64-bit in (R1,R0)
+DIV R1, R2          ; Divide by 32-bit divisor
+
+; Division with memory operand
+DIV R1, [R2]        ; Divide by divisor at address R2
+
+; Check divisibility
+DIV R1, R2          ; Divide
+CMP R0, #0          ; Check remainder
+BRANCH EQ, divisible ; Branch if remainder is zero
+
+; Convert seconds to minutes and seconds
+MOV R1, seconds     ; Dividend in (R1,R0)
+MOV R2, #60         ; Divisor = 60
+DIV R1, R2          ; Quotient = minutes, remainder = seconds
+```
+
+---
+
+## 3.6 IDIV - Divide Signed
+
+**Description:** Performs signed division using two's complement arithmetic.
+
+**Math Core Encoding:** Opcode 0x15, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x15 (7-bit), 12-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+IDIV dividend_high, divisor   ; Quotient in dividend_high, remainder in R0
+```
+
+**Examples:**
+```assembly
+; Signed division
+IDIV R1, R2         ; Divide signed (R1,R0) by signed R2
+
+; Check for negative remainder
+IDIV R1, R2
+CMP R0, #0
+BRANCH LT, negative_remainder
+```
+
+---
+
+## 3.7 INC - Increment
+
+**Description:** Increments the operand by one.
+
+**Math Core Encoding:** Opcode 0x16, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x16 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Opcode 0x06 (6-bit), 8-bit header, 1 operand descriptor
+
+**Flags Updated:** ZF, SF, OF (carry flag unchanged)
+
+**Assembly Syntax:**
+```
+INC operand
+```
+
+**Examples:**
+```assembly
+; Increment register
+INC R1              ; R1 = R1 + 1
+
+; Increment memory
+INC [R1]            ; Increment value at address R1
+
+; Loop counter
+MOV R1, #0
+loop:
+    INC R1
+    CMP R1, #100
+    BRANCH LT, loop
+```
+
+---
+
+## 3.8 DEC - Decrement
+
+**Description:** Decrements the operand by one.
+
+**Math Core Encoding:** Opcode 0x17, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x17 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Opcode 0x07 (6-bit), 8-bit header, 1 operand descriptor
+
+**Flags Updated:** ZF, SF, OF (carry flag unchanged)
+
+**Assembly Syntax:**
+```
+DEC operand
+```
+
+**Examples:**
+```assembly
+; Decrement register
+DEC R1              ; R1 = R1 - 1
+
+; Decrement memory
+DEC [R1]            ; Decrement value at address R1
+
+; Loop counter (count down)
+MOV R1, #100
+loop:
+    DEC R1
+    BRANCH NE, loop
+```
+
+---
+
+## 3.9 FMA - Fused Multiply-Add
+
+**Description:** Performs fused multiply-add: dest = (a × b) + c with a single rounding. This is more accurate than separate multiply and add instructions.
+
+**Math Core Encoding:** Opcode 0x18, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 16-512 bits | Destination for result |
+| A | Register, Memory, or Immediate | 16-512 bits | Multiplier |
+| B | Register, Memory, or Immediate | 16-512 bits | Multiplicand |
+| C | Register, Memory, or Immediate | 16-512 bits | Addend |
+
+**Logic Core Encoding:** Not available
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF, OF
+
+**Assembly Syntax:**
+```
+FMA dest, a, b, c
+FMA.V dest, a, b, c    ; Vector element-wise FMA
+FMA.RZ dest, a, b, c   ; Round toward zero
+FMA.RU dest, a, b, c   ; Round up
+FMA.RD dest, a, b, c   ; Round down
+```
+
+**Examples:**
+```assembly
+; Simple FMA
+FMA R1, R2, R3, R4   ; R1 = (R2 * R3) + R4
+
+; FMA with immediate addend
+FMA R1, R2, R3, #1.0 ; R1 = (R2 * R3) + 1.0
+
+; Dot product using FMA in a loop
+MOV R1, #0           ; Initialize accumulator
+MOV R2, #0           ; Initialize index
+loop:
+    FMA R1, [R3+R2], [R4+R2], R1   ; accumulator += a[i] * b[i]
+    ADD R2, #8
+    CMP R2, #size
+    BRANCH LT, loop
+
+; Polynomial evaluation (Horner's method)
+FMA R1, x, a, b      ; R1 = a*x + b
+FMA R1, R1, x, c     ; R1 = (a*x + b)*x + c
+FMA R1, R1, x, d     ; R1 = (a*x^2 + b*x + c)*x + d
+
+; Vector FMA for neural network layer
+FMA.V V1, V2, V3, V4 ; V1[i] = (V2[i] * V3[i]) + V4[i] for all i
+
+; Complex multiplication using FMA
+; Multiply (a + i*b) by (c + i*d) = (a*c - b*d) + i*(a*d + b*c)
+FMA real, a, c, neg_b_d    ; real = a*c + (-b*d)
+FMA imag, a, d, b_c        ; imag = a*d + b*c
+```
+
+---
+
+# Section 4: Logic and Bit Instructions
+
+## 4.1 AND - Bitwise Logical AND
+
+**Description:** Performs bitwise AND between two operands. Each result bit is 1 only if both corresponding source bits are 1.
+
+**Math Core Encoding:** Opcode 0x20, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x20 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x08 (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+AND dest, src
+AND.V dest, src1, src2    ; Vector element-wise AND
+```
+
+**Examples:**
+```assembly
+; Simple bitwise AND
+AND R1, R2          ; R1 = R1 & R2
+
+; Masking with immediate (keep low 8 bits)
+AND R1, #0xFF       ; R1 = R1 & 0xFF
+
+; Clearing specific bits
+AND R1, #0xFFFFFF00 ; Clear low 8 bits of R1
+
+; Test if value is zero (without modifying)
+AND R1, R1          ; Sets flags, R1 unchanged
+
+; Aligning memory addresses to 16-byte boundary
+AND R1, #0xFFFFFFF0 ; Round down to multiple of 16
+
+; Vector bitwise AND
+AND.V V1, V2, V3    ; V1[i] = V2[i] & V3[i] for all i
+```
+
+---
+
+## 4.2 OR - Bitwise Logical OR
+
+**Description:** Performs bitwise OR between two operands. Each result bit is 1 if at least one corresponding source bit is 1.
+
+**Math Core Encoding:** Opcode 0x21, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x21 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x09 (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+OR dest, src
+OR.V dest, src1, src2     ; Vector element-wise OR
+```
+
+**Examples:**
+```assembly
+; Simple bitwise OR
+OR R1, R2           ; R1 = R1 | R2
+
+; Setting specific bits (set low 4 bits to 1)
+OR R1, #0x0F        ; R1 = R1 | 0x0F
+
+; Combining flag registers
+OR R1, R2           ; Combine error flags
+
+; Convert binary digit to ASCII
+OR R1, #0x30        ; Convert 0-9 to '0'-'9'
+
+; Force value to be odd
+OR R1, #1           ; R1 = R1 | 1 (set low bit)
+
+; Vector bitwise OR
+OR.V V1, V2, V3     ; V1[i] = V2[i] | V3[i] for all i
+```
+
+---
+
+## 4.3 XOR - Bitwise Exclusive OR
+
+**Description:** Performs bitwise XOR between two operands. Each result bit is 1 if the corresponding source bits are different.
+
+**Math Core Encoding:** Opcode 0x22, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x22 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x0A (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+XOR dest, src
+XOR.V dest, src1, src2    ; Vector element-wise XOR
+```
+
+**Examples:**
+```assembly
+; Simple bitwise XOR
+XOR R1, R2          ; R1 = R1 ^ R2
+
+; Zero a register (fastest method)
+XOR R1, R1          ; R1 = 0
+
+; Toggle specific bits
+XOR R1, #0x0F       ; Toggle low 4 bits of R1
+
+; Simple XOR encryption/decryption
+XOR R1, key         ; Encrypt
+; ... later ...
+XOR R1, key         ; Decrypt back to original
+
+; Swap registers without temporary
+XOR R1, R2          ; R1 = R1 ^ R2
+XOR R2, R1          ; R2 = R2 ^ R1 (now R2 holds original R1)
+XOR R1, R2          ; R1 = R1 ^ R2 (now R1 holds original R2)
+
+; Check if two values are equal
+XOR R1, R2
+BRANCH EQ, equal    ; Branch if R1 == R2
+
+; Gray code conversion
+; gray = binary ^ (binary >> 1)
+MOV R2, R1
+SHR R2, R2, #1
+XOR R1, R2          ; R1 now contains Gray code
+```
+
+---
+
+## 4.4 NOT - Bitwise Logical NOT
+
+**Description:** Performs bitwise NOT (one's complement) on a single operand, inverting every bit.
+
+**Math Core Encoding:** Opcode 0x23, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x23 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+NOT operand
+NOT.V dest, src         ; Vector element-wise NOT
+```
+
+**Examples:**
+```assembly
+; Simple bitwise NOT
+NOT R1              ; R1 = ~R1
+
+; Two's complement negation
+NOT R1
+ADD R1, #1          ; R1 = -R1 (two's complement)
+
+; Create mask of all ones
+XOR R1, R1          ; R1 = 0
+NOT R1              ; R1 = all ones
+
+; Invert vector element-wise
+NOT.V V1, V2        ; V1[i] = ~V2[i] for all i
+
+; Compute NAND (NOT AND)
+AND R1, R2
+NOT R1              ; R1 = ~(R1 & R2)
+```
+
+---
+
+## 4.5 TEST - Test Bits
+
+**Description:** Performs bitwise AND between two operands but does not store the result; only updates condition flags.
+
+**Math Core Encoding:** Opcode 0x24, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x24 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+TEST operand1, operand2
+```
+
+**Examples:**
+```assembly
+; Test a single bit
+TEST R1, #0x04      ; Test bit 2 of R1
+BRANCH NE, bit_set   ; Branch if bit is set
+
+; Test multiple bits (any set)
+TEST R1, #0x0F      ; Test low 4 bits
+BRANCH Z, none_set   ; Branch if none are set
+
+; Test sign bit
+TEST R1, #0x80000000 ; Test most significant bit
+BRANCH NE, negative  ; Branch if negative
+
+; Test for even/odd
+TEST R1, #1         ; Test low bit
+BRANCH Z, even      ; Branch if even
+
+; Test memory value
+TEST [R1], #0x80    ; Test high bit of byte at address R1
+BRANCH NE, high_bit_set
+
+; Test using register mask
+TEST R1, R2         ; Test bits in R1 specified by mask in R2
+BRANCH Z, no_bits_set
+```
+
+---
+
+## 4.6 BSF - Bit Scan Forward
+
+**Description:** Finds the index of the least significant set bit (lowest bit position containing a 1).
+
+**Math Core Encoding:** Opcode 0x30, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 64-bit | Receives bit index (0 = LSB) |
+| Src | Register or Memory | 16-512 bits | Value to scan |
+
+**Logic Core Encoding:** Opcode 0x30 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (set if source is zero)
+
+**Assembly Syntax:**
+```
+BSF destination, source
+BSF.P1 destination, source   ; Return index + 1
+```
+
+**Examples:**
+```assembly
+; Find lowest set bit
+BSF R1, R2          ; R1 = index of lowest set bit in R2
+BRANCH Z, no_bits   ; Branch if R2 was zero
+
+; Iterate over set bits
+loop:
+    BSF R1, R2
+    BRANCH Z, done
+    ; Process bit at position R1
+    XOR R2, #1<<R1  ; Clear that bit
+    JMP loop
+
+; Count trailing zeros (ctz) - same as BSF
+BSF R1, R2          ; R1 = number of trailing zeros
+
+; Find first free bit in bitmap
+BSF R1, [bitmap]    ; Find first free bit (if 0=free, 1=allocated)
+```
+
+---
+
+## 4.7 BSR - Bit Scan Reverse
+
+**Description:** Finds the index of the most significant set bit (highest bit position containing a 1).
+
+**Math Core Encoding:** Opcode 0x31, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x31 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (set if source is zero)
+
+**Assembly Syntax:**
+```
+BSR destination, source
+```
+
+**Examples:**
+```assembly
+; Find highest set bit
+BSR R1, R2          ; R1 = index of highest set bit in R2
+
+; Compute floor of binary logarithm (log2)
+BSR R1, R2          ; R1 = floor(log2(R2))
+
+; Find next power of two
+BSR R1, R2
+ADD R1, #1
+MOV R3, #1
+SHL R3, R3, R1      ; R3 = 2^(floor(log2(R2))+1)
+
+; Normalize floating-point mantissa
+BSR R1, R2          ; Find highest set bit in mantissa
+SUB R1, #23         ; Subtract mantissa width
+SHL R2, R2, R1      ; Shift to normalize
+
+; Count leading zeros
+BSR R1, R2
+SUB R1, #31, R1     ; Leading zeros = 31 - floor(log2(R2))
+```
+
+---
+
+## 4.8 SHL - Shift Left
+
+**Description:** Shifts bits left; zeros are shifted into LSB positions.
+
+**Math Core Encoding:** Opcode 0x36, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x36 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF, CF (last bit shifted out), OF
+
+**Assembly Syntax:**
+```
+SHL dest, count
+SHL.V dest, src, count    ; Vector shift left
+SHL.S dest, count         ; Saturating shift left
+```
+
+**Examples:**
+```assembly
+; Simple shift left (multiply by power of two)
+SHL R1, #3          ; R1 = R1 << 3 = R1 * 8
+
+; Shift left by variable amount
+SHL R1, R2          ; R1 = R1 << (R2 & 0x3F)
+
+; Extract bit field (shift to top, then shift back)
+SHL R1, #16         ; Shift field to top
+SHR R1, #16         ; Shift back to bottom
+
+; Build value from fields
+SHL R1, #16         ; Shift field 1 to high word
+OR R1, R2           ; OR in field 2 (low word)
+
+; Vector shift left
+SHL.V V1, V2, #2    ; Each element of V1 = element of V2 << 2
+
+; Power-of-two multiplication (much faster than MUL)
+SHL R1, #10         ; R1 = R1 * 1024
+
+; Shift left with carry detection
+SHL R1, #1
+BRANCH CS, overflow ; Branch if high bit was set before shift
+```
+
+---
+
+## 4.9 SHR - Shift Right
+
+**Description:** Shifts bits right; zeros are shifted into MSB positions (logical shift).
+
+**Math Core Encoding:** Opcode 0x37, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x37 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF (cleared), CF (last bit shifted out)
+
+**Assembly Syntax:**
+```
+SHR dest, count
+SHR.V dest, src, count    ; Vector shift right
+```
+
+**Examples:**
+```assembly
+; Simple shift right (unsigned division by power of two)
+SHR R1, #3          ; R1 = R1 >> 3 = R1 / 8 (unsigned)
+
+; Extract high 16 bits
+SHR R1, #16         ; Shift high bits to low position
+
+; Unsigned division by power of two
+SHR R1, #10         ; R1 = R1 / 1024 (unsigned)
+
+; Align pointer to cache line (round down)
+SHR R1, #6          ; Divide by 64
+SHL R1, #6          ; Multiply by 64
+
+; Vector shift right
+SHR.V V1, V2, #2    ; Each element of V1 = element of V2 >> 2
+
+; Extract bit field from the right
+SHR R1, #3          ; Shift field to low bits
+AND R1, #0x1F       ; Mask to 5 bits
+
+; Convert fixed-point to integer (discard fractional part)
+SHR R1, #16         ; R1 = R1 / 65536 (integer part only)
+
+; Shift right with carry detection (test low bit)
+SHR R1, #1
+BRANCH CS, odd      ; Branch if low bit was set
+```
+
+---
+
+# Section 5: Control Flow Instructions
+
+## 5.1 JMP - Unconditional Jump
+
+**Description:** Transfers execution control to a specified address unconditionally.
+
+**Math Core Encoding:** Opcode 0x40, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x40 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Opcode 0x10 (6-bit), 8-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+JMP target
+JMP.S target        ; Short jump (8-bit offset)
+JMP.N target        ; Near jump (32-bit offset)
+JMP.FAR segment:offset ; Far jump (segment change)
+JMP R1              ; Jump through register
+JMP [R1]            ; Jump through memory
+JMP @4:0x10000      ; Remote jump to blade 4
+```
+
+**Examples:**
+```assembly
+; Direct jump to label
+JMP target_label
+
+; Infinite loop
+loop:
+    JMP loop
+
+; Jump through register (function pointer)
+JMP R1              ; Jump to address in R1
+
+; Jump through memory (virtual function table)
+JMP [R1]            ; Load target from memory at R1, then jump
+
+; Short jump (2 bytes, limited range)
+JMP.S short_target
+
+; Far jump to different code segment
+JMP.FAR 0x08:0x10000
+
+; Remote jump
+JMP @4:0x10000      ; Jump to code on blade 4
+```
+
+---
+
+## 5.2 CALL - Call Subroutine
+
+**Description:** Transfers control to a subroutine while saving the return address on the hardware return stack.
+
+**Math Core Encoding:** Opcode 0x41, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x41 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Opcode 0x11 (6-bit), 8-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+CALL target
+CALL R1             ; Call through register
+CALL [R1]           ; Call through memory
+CALL.FAR segment:offset ; Far call
+CALL @4:0x10000     ; Remote call
+```
+
+**Examples:**
+```assembly
+; Simple subroutine call
+CALL subroutine
+; Returns here after subroutine completes
+
+; Call through register (function pointer)
+CALL R1             ; Call function at address in R1
+
+; Call through memory (virtual function)
+CALL [R1]           ; Load address from memory at R1, then call
+
+; Nested calls (return stack handles them)
+CALL outer
+; ... returns here after outer and inner complete
+outer:
+    CALL inner
+    RET
+inner:
+    RET
+
+; Tail call optimization (replace CALL+RET with JMP)
+; Instead of:
+CALL subroutine
+RET
+; Use:
+JMP subroutine
+
+; Remote procedure call
+CALL @4:0x10000     ; Call function on blade 4
+```
+
+---
+
+## 5.3 RET - Return from Subroutine
+
+**Description:** Returns control from a subroutine by popping the return address from the hardware return stack.
+
+**Math Core Encoding:** Opcode 0x42, 20-bit header, 0 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x42 (7-bit), 12-bit header, 0 operand descriptors
+
+**System Core Encoding:** Opcode 0x12 (6-bit), 8-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+RET
+RET.FAR             ; Far return (segment change)
+RET #8              ; Return and pop 8 bytes from stack
+RET.I               ; Return from interrupt
+```
+
+**Examples:**
+```assembly
+; Simple return
+subroutine:
+    ; ... do work ...
+    RET
+
+; Far return (kernel to user)
+kernel_entry:
+    ; ... kernel code ...
+    RET.FAR
+
+; Return with argument cleanup (callee cleans stack)
+subroutine:
+    ; ... uses 8 bytes of stack arguments ...
+    RET #8          ; Return and pop 8 argument bytes
+
+; Return from interrupt handler
+interrupt_handler:
+    ; ... save context, handle interrupt, restore context ...
+    RET.I           ; Restores saved flags
+
+; Leaf function return (no nested calls)
+leaf_function:
+    ADD R1, R1, #1
+    RET
+```
+
+---
+
+## 5.4 BRANCH - Conditional Branch
+
+**Description:** Transfers control to a target address if a specified condition is true based on the condition flags.
+
+**Math Core Encoding:** Opcode 0x43, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x43 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Not available
+
+**Condition Codes:**
+
+| Code | Mnemonic | Condition | Flags Tested |
+|------|----------|-----------|--------------|
+| 0x0 | EQ | Equal | ZF = 1 |
+| 0x1 | NE | Not equal | ZF = 0 |
+| 0x2 | LT | Signed less than | SF != OF |
+| 0x3 | LE | Signed less or equal | ZF = 1 or SF != OF |
+| 0x4 | GT | Signed greater than | ZF = 0 and SF = OF |
+| 0x5 | GE | Signed greater or equal | SF = OF |
+| 0x6 | LO | Unsigned lower | CF = 1 |
+| 0x7 | LS | Unsigned lower or same | CF = 1 or ZF = 1 |
+| 0x8 | HI | Unsigned higher | CF = 0 and ZF = 0 |
+| 0x9 | HS | Unsigned higher or same | CF = 0 |
+| 0xA | CS | Carry set | CF = 1 |
+| 0xB | CC | Carry clear | CF = 0 |
+| 0xC | VS | Overflow set | OF = 1 |
+| 0xD | VC | Overflow clear | OF = 0 |
+| 0xE | MI | Negative (minus) | SF = 1 |
+| 0xF | PL | Positive or zero (plus) | SF = 0 |
+
+**Assembly Syntax:**
+```
+BRANCH condition, target
+BRANCH.PT condition, target  ; Predict taken
+BRANCH.PN condition, target  ; Predict not taken
+```
+
+**Examples:**
+```assembly
+; Branch if equal
+CMP R1, R2
+BRANCH EQ, equal_label
+
+; Branch if greater than (signed)
+CMP R1, R2
+BRANCH GT, greater_label
+
+; Branch if less than (unsigned)
+CMP R1, R2
+BRANCH LO, lower_label
+
+; Loop with conditional branch
+MOV R1, #0
+loop:
+    ADD R1, #1
+    CMP R1, #100
+    BRANCH LT, loop
+
+; If-then-else structure
+CMP R1, R2
+BRANCH EQ, then_case
+else_case:
+    ; ... else code ...
+    JMP end_if
+then_case:
+    ; ... then code ...
+end_if:
+
+; Short-circuit evaluation
+CMP R1, #0
+BRANCH EQ, short_circuit
+CMP R2, #0
+BRANCH EQ, short_circuit
+; both non-zero
+
+; Branch with prediction hints
+BRANCH.PT EQ, likely_taken   ; Hint: predict taken
+BRANCH.PN EQ, unlikely_taken ; Hint: predict not taken
+```
+
+---
+
+# Section 6: Vector and SIMD Instructions
+
+## 6.1 ADDPS - Add Packed Single-Precision
+
+**Description:** Performs element-wise addition of packed single-precision floating-point values.
+
+**Math Core Encoding:** Opcode 0x50, 20-bit header, 3 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Vector register | 128-1024 bits | Destination for results |
+| Src1 | Vector register or memory | 128-1024 bits | First source vector |
+| Src2 | Vector register or memory | 128-1024 bits | Second source vector |
+
+**Assembly Syntax:**
+```
+ADDPS dest, src1, src2
+ADDPS.Y dest, src1, src2   ; 256-bit (8 floats)
+ADDPS.Z dest, src1, src2   ; 512-bit (16 floats)
+ADDPS.K dest, src1, src2, mask ; Masked addition
+```
+
+**Examples:**
+```assembly
+; Add two 128-bit vectors (4 floats)
+ADDPS XMM1, XMM2, XMM3   ; XMM1 = XMM2 + XMM3
+
+; Add 256-bit vectors (8 floats)
+ADDPS.Y YMM1, YMM2, YMM3
+
+; Add 512-bit vectors (16 floats)
+ADDPS.Z ZMM1, ZMM2, ZMM3
+
+; Add vector from memory
+ADDPS XMM1, XMM2, [R1]   ; XMM1 = XMM2 + memory at R1
+
+; Add broadcast scalar to vector
+ADDPS XMM1, XMM2, XMM3_S ; Broadcast XMM3[0] to all lanes
+
+; Masked vector addition (mask in K1 register)
+ADDPS.K ZMM1, ZMM2, ZMM3, K1
+```
+
+---
+
+## 6.2 MULPS - Multiply Packed Single-Precision
+
+**Description:** Performs element-wise multiplication of packed single-precision floating-point values.
+
+**Math Core Encoding:** Opcode 0x51, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+MULPS dest, src1, src2
+MULPS.Y dest, src1, src2   ; 256-bit
+MULPS.Z dest, src1, src2   ; 512-bit
+MULPS.K dest, src1, src2, mask ; Masked
+```
+
+**Examples:**
+```assembly
+; Multiply two 128-bit vectors
+MULPS XMM1, XMM2, XMM3   ; XMM1 = XMM2 * XMM3
+
+; Scale vector by scalar
+MULPS XMM1, XMM2, XMM3_S ; XMM1 = XMM2 * XMM3[0]
+
+; Square vector elements
+MULPS XMM1, XMM2, XMM2   ; XMM1 = XMM2 * XMM2 (squares)
+
+; 4x4 matrix multiplication row by vector
+MULPS XMM5, YMM0, XMM4_S ; Row0 * vector (broadcast)
+HADDPS XMM5, XMM5, XMM5  ; Horizontal sum
+
+; Vector multiplication with memory operand
+MULPS XMM1, XMM2, [R1]   ; XMM1 = XMM2 * memory at R1
+```
+
+---
+
+## 6.3 DOT - Vector Dot Product
+
+**Description:** Computes the dot product (scalar product) of two vectors.
+
+**Math Core Encoding:** Opcode 0x52, 20-bit header, 3 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Scalar register | 32-64 bits | Result of dot product |
+| Src1 | Vector register or memory | 128-1024 bits | First vector |
+| Src2 | Vector register or memory | 128-1024 bits | Second vector |
+
+**Assembly Syntax:**
+```
+DOT dest, src1, src2
+DOT.MP dest, src1, src2    ; Mixed precision (float multiply, double accumulate)
+```
+
+**Examples:**
+```assembly
+; Simple dot product of two 4-element vectors
+DOT R1, XMM2, XMM3     ; R1 = XMM2 · XMM3
+
+; Squared length of vector
+DOT R1, XMM2, XMM2     ; R1 = |XMM2|^2
+
+; Cosine similarity
+DOT R1, XMM2, XMM3     ; dot product
+SQRT R2, R2            ; length of first vector
+SQRT R3, R3            ; length of second vector
+MUL R4, R2, R3         ; product of lengths
+DIV R5, R1, R4         ; cosine = dot / (len1 * len2)
+
+; Mixed-precision dot product (reduces rounding error)
+DOT.MP R1, ZMM2, ZMM3
+
+; Convolution using sliding dot product
+DOT R1, XMM2, XMM3     ; kernel · input window
+
+; Attention mechanism dot product
+DOT R1, XMM_query, XMM_key   ; query · key
+```
+
+---
+
+## 6.4 CONV - 2D Convolution
+
+**Description:** Performs 2D convolution in constant time using a systolic array.
+
+**Math Core Encoding:** Opcode 0x53, 20-bit header, 5 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Output | Memory | Variable | Output buffer address |
+| Input | Memory | Variable | Input buffer address |
+| Kernel | Memory | Variable | Kernel buffer address |
+| Dimensions | Immediate | 32 bits | Height in bits 0-15, width in bits 16-31 |
+| Stride | Immediate | 16 bits | Vertical stride bits 0-7, horizontal bits 8-15 |
+
+**Assembly Syntax:**
+```
+CONV output, input, kernel, dimensions, stride
+CONV.K5 output, input, kernel, dims, stride   ; 5x5 kernel
+CONV.PAD_SAME output, input, kernel, dims, stride  ; Same padding
+CONV.DEPTH output, input, kernel, dims, stride ; Depthwise
+CONV.TRANS output, input, kernel, dims, stride ; Transposed
+```
+
+**Examples:**
+```assembly
+; 3x3 convolution on 224x224 image
+CONV R3, R1, R2, #0xE0E0, #1   ; 224=0xE0, stride=1
+
+; Same padding (output same size as input)
+CONV.PAD_SAME R3, R1, R2, #0xE0E0, #1
+
+; 5x5 convolution with stride 2
+CONV.K5 R3, R1, R2, #0xE0E0, #0x0202
+
+; Depthwise convolution (each channel has own kernel)
+CONV.DEPTH R3, R1, R2, dimensions, stride
+
+; 1x1 convolution (pointwise)
+CONV.K1 R3, R1, R2, dimensions, #1
+
+; 8-bit integer convolution (quantized networks)
+CONV.I8 R3, R1, R2, dimensions, stride
+
+; Transposed convolution (upsampling)
+CONV.TRANS R3, R1, R2, dimensions, stride
+
+; Dilated convolution with dilation rate 2
+CONV.DILATE R3, R1, R2, dimensions, #0x0202, #2
+```
+
+---
+
+## 6.5 SHUFPS - Shuffle Packed Single-Precision
+
+**Description:** Reorders elements within a vector by selecting elements from two source vectors.
+
+**Math Core Encoding:** Opcode 0x54, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Vector register | 128-512 bits | Destination for shuffled result |
+| Src1 | Vector register | 128-512 bits | First source vector |
+| Src2 | Vector register | 128-512 bits | Second source vector |
+| Mask | Immediate | 8 bits | Shuffle pattern (2 bits per element) |
+
+**Assembly Syntax:**
+```
+SHUFPS dest, src1, src2, mask
+```
+
+**Examples:**
+```assembly
+; Basic shuffle of 4 elements
+SHUFPS XMM1, XMM2, XMM3, #0x1B
+; XMM1 = {XMM2[1], XMM2[0], XMM3[3], XMM3[2]}
+
+; Broadcast a single element to all positions
+SHUFPS XMM1, XMM2, XMM2, #0x00   ; Broadcast XMM2[0]
+
+; Reverse vector order
+SHUFPS XMM1, XMM2, XMM2, #0x1B   ; Reverse 4 elements
+
+; Interleave two vectors (for complex numbers)
+SHUFPS XMM1, XMM2, XMM3, #0x88   ; {r0,i0,r1,i1}
+
+; Unpack low and high halves
+UNPCKLPS XMM1, XMM2, XMM3   ; {XMM2[0],XMM3[0],XMM2[1],XMM3[1]}
+UNPCKHPS XMM1, XMM2, XMM3   ; {XMM2[2],XMM3[2],XMM2[3],XMM3[3]}
+
+; Extract and broadcast element 2
+SHUFPS XMM1, XMM2, XMM2, #0xAA   ; 0xAA = 10 10 10 10 (binary)
+```
+
+---
+
+# Section 7: INT4 Inference Instructions
+
+## 7.1 MATMULI4 - INT4 Matrix Multiplication
+
+**Description:** Performs matrix multiplication of two INT4 matrices, accumulating results in 32-bit integers.
+
+**Math Core Encoding:** Opcode 0x90, 20-bit header, 5 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Output | Memory | Variable | Output accumulator matrix address |
+| A | Memory | Variable | First INT4 matrix |
+| B | Memory | Variable | Second INT4 matrix |
+| M | Immediate | 32 bits | Rows of A |
+| K | Immediate | 32 bits | Columns of A / rows of B |
+| N | Immediate | 32 bits | Columns of B |
+
+**Assembly Syntax:**
+```
+MATMULI4 output, A, B, M, K, N
+MATMULI4.T1 output, A, B, M, K, N   ; Transpose first matrix
+MATMULI4.T2 output, A, B, M, K, N   ; Transpose second matrix
+MATMULI4.R output, A, B, M, K, N, bias ; With ReLU activation
+MATMULI4.G output, A, B, M, K, N, bias ; With GELU activation
+```
+
+**Examples:**
+```assembly
+; Basic INT4 matrix multiplication
+MATMULI4 C, A, B, #1024, #1024, #1024
+
+; With transpose
+MATMULI4.T1 C, A, B, #1024, #1024, #1024  ; C = A^T × B
+
+; With bias and ReLU activation
+MATMULI4.R C, A, B, #1024, #1024, #1024, bias
+
+; With GELU activation (transformer FFN)
+MATMULI4.G C, A, B, #1024, #1024, #1024, bias
+```
+
+---
+
+## 7.2 SOFTMAXI4 - INT4 Softmax
+
+**Description:** Computes softmax on INT4 logits using FP16 for intermediate computation.
+
+**Math Core Encoding:** Opcode 0x91, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Vector register or memory | Variable | Output probabilities (INT4) |
+| Src | Vector register or memory | Variable | Input logits (INT4) |
+
+**Assembly Syntax:**
+```
+SOFTMAXI4 dest, src
+SOFTMAXI4.T dest, src, temp   ; Temperature-scaled
+SOFTMAXI4.L dest, src         ; Log-softmax
+```
+
+**Examples:**
+```assembly
+; Softmax on INT4 logits
+SOFTMAXI4 V1, V2
+
+; Temperature-scaled softmax (T=0.7)
+SOFTMAXI4.T V1, V2, #0.7
+
+; Log-softmax (for cross-entropy loss)
+SOFTMAXI4.L V1, V2
+```
+
+---
+
+## 7.3 ATTENTIONI4 - INT4 Multi-Head Attention
+
+**Description:** Computes scaled dot-product attention entirely in INT4 with FP16 softmax.
+
+**Math Core Encoding:** Opcode 0x92, 20-bit header, 6 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Output | Memory | Variable | Output attention matrix |
+| Q | Memory | Variable | Query matrix (INT4) |
+| K | Memory | Variable | Key matrix (INT4) |
+| V | Memory | Variable | Value matrix (INT4) |
+| SeqLen | Immediate | 32 bits | Sequence length |
+| HeadDim | Immediate | 32 bits | Head dimension |
+
+**Assembly Syntax:**
+```
+ATTENTIONI4 output, Q, K, V, seq_len, head_dim
+ATTENTIONI4.C output, Q, K, V, seq_len, head_dim  ; Causal masking
+ATTENTIONI4.F output, Q, K, V, seq_len, head_dim  ; Flash attention
+```
+
+**Examples:**
+```assembly
+; Standard attention
+ATTENTIONI4 output, Q, K, V, #2048, #64
+
+; Causal masking (autoregressive)
+ATTENTIONI4.C output, Q, K, V, #2048, #64
+
+; Flash attention (memory-optimized)
+ATTENTIONI4.F output, Q, K, V, #2048, #64
+```
+
+---
+
+## 7.4 GELUI4 - INT4 GELU Activation
+
+**Description:** Computes GELU activation on INT4 values using a lookup table.
+
+**Math Core Encoding:** Opcode 0x93, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+GELUI4 dest, src
+GELUI4.F dest, src   ; Fast approximate (2x speed, 2% accuracy loss)
+```
+
+**Examples:**
+```assembly
+; Apply GELU to INT4 vector
+GELUI4 V1, V2
+
+; Fast approximate GELU
+GELUI4.F V1, V2
+```
+
+---
+
+## 7.5 LAYERNORMI4 - INT4 Layer Normalization
+
+**Description:** Computes layer normalization on INT4 tensors.
+
+**Math Core Encoding:** Opcode 0x94, 20-bit header, 3 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Output | Memory | Variable | Output tensor (INT4) |
+| Input | Memory | Variable | Input tensor (INT4) |
+| Params | Memory | 2×32 bits | Scale and bias (FP16) |
+
+**Assembly Syntax:**
+```
+LAYERNORMI4 output, input, params
+```
+
+**Examples:**
+```assembly
+; Normalize INT4 vector using learned scale and bias
+LAYERNORMI4 output, input, params
+```
+
+---
+
+## 7.6 RESIDUALI4 - INT4 Residual Connection
+
+**Description:** Adds residual connection between two INT4 tensors using FP16 for addition.
+
+**Math Core Encoding:** Opcode 0x95, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+RESIDUALI4 output, input, residual
+```
+
+**Examples:**
+```assembly
+; Residual connection: output = input + residual
+RESIDUALI4 output, input, residual
+```
+
+---
+
+# Section 8: System Instructions
+
+## 8.1 SYSENTER - Enter Kernel Mode
+
+**Description:** Transfers control from user code to operating system kernel.
+
+**System Core Encoding:** Opcode 0x20 (6-bit), 8-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+SYSENTER
+SYSENTER.ASYNC   ; Asynchronous (returns immediately)
+SYSENTER.REMOTE  ; Execute on remote blade
+```
+
+**Examples:**
+```assembly
+; Standard system call
+MOV R1, #1        ; System call number (write)
+MOV R2, fd        ; File descriptor
+MOV R3, buffer    ; Buffer address
+MOV R4, count     ; Byte count
+SYSENTER
+
+; Asynchronous system call
+SYSENTER.ASYNC
+; Continue execution while kernel processes request
+```
+
+---
+
+## 8.2 SYSEXIT - Exit Kernel Mode
+
+**Description:** Returns from kernel mode to user code.
+
+**System Core Encoding:** Opcode 0x21 (6-bit), 8-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+SYSEXIT
+SYSEXIT.SP        ; Return with modified stack pointer
+SYSEXIT.REMOTE    ; Return to remote blade
+```
+
+**Examples:**
+```assembly
+; Return from system call
+SYSEXIT
+
+; Return with new stack pointer (for thread creation)
+SYSEXIT.SP
+```
+
+---
+
+## 8.3 IN - Input from Port
+
+**Description:** Reads a byte, word, or doubleword from an I/O port.
+
+**System Core Encoding:** Opcode 0x22 (6-bit), 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+IN dest, port
+IN.W dest, port    ; Word (16-bit)
+IN.D dest, port    ; Doubleword (32-bit)
+IN.S dest, port    ; String input (repeated)
+```
+
+**Examples:**
+```assembly
+; Read byte from keyboard controller
+IN R1, #0x60
+
+; Read word from COM1 serial port
+IN.W R1, #0x3F8
+
+; Read 32 bytes from port into buffer
+MOV R2, #32
+IN.S R1, #0x3F8
+
+; Read from port using register port number
+MOV R2, #0x3F8
+IN R1, R2
+```
+
+---
+
+## 8.4 OUT - Output to Port
+
+**Description:** Writes a byte, word, or doubleword to an I/O port.
+
+**System Core Encoding:** Opcode 0x23 (6-bit), 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+OUT port, src
+OUT.W port, src    ; Word (16-bit)
+OUT.D port, src    ; Doubleword (32-bit)
+OUT.S port, src    ; String output (repeated)
+```
+
+**Examples:**
+```assembly
+; Write byte to keyboard controller
+OUT #0x60, R1
+
+; Write word to COM1 serial port
+OUT.W #0x3F8, R1
+
+; Write 32 bytes from buffer to port
+OUT.S #0x3F8, R1
+
+; Write immediate value to POST port
+OUT #0x80, #0x12
+```
+
+---
+
+## 8.5 CFG_VIDEO - Configure Video Output
+
+**Description:** Configures a video output tile to read a memory region as a framebuffer.
+
+**System Core Encoding:** Opcode 0x24 (6-bit), 8-bit header, 5 operand descriptors
+
+**Assembly Syntax:**
+```
+CFG_VIDEO tile, base, width, height, format, refresh
+CFG_VIDEO.DB tile, base0, width, height, format, refresh  ; Double-buffered
+CFG_VIDEO.SWAP tile, new_base   ; Swap buffer
+CFG_VIDEO.OFF tile               ; Disable output
+```
+
+**Examples:**
+```assembly
+; Configure 1920x1080 RGB output at 60 Hz
+CFG_VIDEO #0, framebuffer, #1920, #1080, #0x01, #60000
+
+; 4K output with double buffering
+CFG_VIDEO.DB #0, framebuffer0, #3840, #2160, #0x03, #60000
+
+; Swap buffers (page flip)
+CFG_VIDEO.SWAP #0, new_framebuffer
+
+; DisplayPort output at 144 Hz
+CFG_VIDEO.DP #1, framebuffer, #2560, #1440, #0x01, #144000
+
+; Disable video output
+CFG_VIDEO.OFF #0
+```
+
+---
+
+## 8.6 CFG_AUDIO - Configure Audio Output
+
+**Description:** Configures an audio output tile to read a circular buffer from memory.
+
+**System Core Encoding:** Opcode 0x25 (6-bit), 8-bit header, 6 operand descriptors
+
+**Assembly Syntax:**
+```
+CFG_AUDIO tile, buffer, size, rate, bits, channels, map
+CFG_AUDIO.MIX tile, buffer, size, rate, bits, channels, map  ; Hardware mixing
+```
+
+**Examples:**
+```assembly
+; Configure stereo audio at 48 kHz
+CFG_AUDIO #0, audio_buffer, #65536, #48000, #16, #2, channel_map
+
+; 5.1 surround sound at 96 kHz
+CFG_AUDIO #0, audio_buffer, #131072, #96000, #24, #6, surround_map
+
+; HDMI audio output
+CFG_AUDIO.HDMI #0, audio_buffer, #65536, #48000, #16, #2, channel_map
+
+; Hardware mixing
+CFG_AUDIO.MIX #0, master_buffer, #65536, #48000, #16, #2, map
+```
+
+---
+
+## 8.7 RING_INIT - Initialize Circular Buffer
+
+**Description:** Initializes a hardware-managed circular buffer.
+
+**System Core Encoding:** Opcode 0x26 (6-bit), 8-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+RING_INIT buffer, segment_size, segment_count, control
+RING_INIT.INT buffer, segment_size, segment_count, control  ; With interrupts
+```
+
+**Examples:**
+```assembly
+; Initialize audio ring buffer
+RING_INIT audio_buffer, #4096, #16, ring_ctrl
+
+; Initialize network receive ring
+RING_INIT net_rx_buffer, #2048, #32, net_rx_ctrl
+
+; Initialize with interrupts enabled
+RING_INIT.INT audio_buffer, #4096, #16, ring_ctrl
+
+; Remote ring buffer (shared between blades)
+RING_INIT.REMOTE shared_buffer, #4096, #16, @4:ring_ctrl
+```
+
+---
+
+## 8.8 RING_WRITE - Write to Ring Buffer
+
+**Description:** Writes data to a hardware-managed circular buffer.
+
+**System Core Encoding:** Opcode 0x27 (6-bit), 8-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+RING_WRITE ring, data, length
+RING_WRITE.NB ring, data, length   ; Non-blocking
+RING_WRITE.SG ring, list, count    ; Scatter-gather
+```
+
+**Examples:**
+```assembly
+; Write audio samples
+RING_WRITE #0, audio_samples, #1024
+
+; Non-blocking write
+RING_WRITE.NB #0, audio_samples, #1024
+BRANCH CS, buffer_full
+
+; Scatter-gather write from multiple buffers
+RING_WRITE.SG #0, sg_list, #3
+```
+
+---
+
+## 8.9 RING_SWAP - Swap Ring Buffer Pointers
+
+**Description:** Atomically swaps read and write pointers of a ring buffer.
+
+**System Core Encoding:** Opcode 0x28 (6-bit), 8-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+RING_SWAP ring
+RING_SWAP.BLOCK ring   ; Block until consumer finishes
+RING_SWAP.COND ring    ; Conditional (non-blocking)
+```
+
+**Examples:**
+```assembly
+; Double-buffered audio
+RING_WRITE #0, audio_samples, #4096
+RING_SWAP #0
+RING_WRITE #0, audio_samples2, #4096
+
+; Video page flip
+RENDER next_frame
+RING_SWAP #0
+
+; Conditional swap
+RING_SWAP.COND #0
+BRANCH CS, consumer_busy
+```
+
+---
+
+This concludes Volume 1 of the Sirius NEXUS AI Processor Gen5 documentation. The complete instruction set comprises 132 instructions across 20 functional categories, with full encoding specifications for Math, Logic, and System cores. Each instruction is documented with assembly syntax, operand types, numerical formats, and multiple usage examples.
