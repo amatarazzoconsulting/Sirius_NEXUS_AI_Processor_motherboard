@@ -2,6 +2,291 @@
 
 ## Volume 1: Complete Instruction Set Reference
 
+# Sirius NEXUS AI Processor Gen5 - Complete Instruction Set Summary
+
+## All 132 Instructions with Brief Function Descriptions
+
+### Data Movement Instructions (5)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| MOV | dest, src | Copy data from source to destination |
+| MOVSX | dest, src | Move with sign extension (small to large signed) |
+| MOVZX | dest, src | Move with zero extension (small to large unsigned) |
+| LEA | dest, [addr] | Load effective address (compute address without accessing memory) |
+| XCHG | a, b | Atomically exchange two operands |
+
+### Arithmetic Instructions (9)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| ADD | dest, src | dest = dest + src |
+| SUB | dest, src | dest = dest - src |
+| MUL | dest, src | Unsigned multiplication (dest = dest × src) |
+| IMUL | dest, src | Signed multiplication |
+| DIV | dest, src | Unsigned division (quotient in dest, remainder in R0) |
+| IDIV | dest, src | Signed division |
+| INC | dest | Increment by 1 |
+| DEC | dest | Decrement by 1 |
+| FMA | dest, a, b, c | Fused multiply-add: dest = (a × b) + c (single rounding) |
+
+### Logic and Bit Instructions (9)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| AND | dest, src | Bitwise AND: dest = dest & src |
+| OR | dest, src | Bitwise OR: dest = dest \| src |
+| XOR | dest, src | Bitwise XOR: dest = dest ^ src |
+| NOT | dest | Bitwise NOT: dest = ~dest |
+| TEST | a, b | Bitwise AND, set flags only (no result stored) |
+| BSF | dest, src | Bit scan forward: find lowest set bit index |
+| BSR | dest, src | Bit scan reverse: find highest set bit index |
+| SHL | dest, count | Shift left: dest = dest << count |
+| SHR | dest, count | Shift right (logical): dest = dest >> count |
+
+### Control Flow Instructions (4)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| JMP | target | Unconditional jump to target address |
+| CALL | target | Call subroutine (pushes return address) |
+| RET | (none) | Return from subroutine (pops return address) |
+| BRANCH | cond, target | Conditional branch based on condition flags (EQ, NE, LT, LE, GT, GE, LO, LS, HI, HS, CS, CC, VS, VC, MI, PL) |
+
+### Vector and SIMD Instructions (5)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| ADDPS | dest, src1, src2 | Add packed single-precision floats (element-wise) |
+| MULPS | dest, src1, src2 | Multiply packed single-precision floats (element-wise) |
+| DOT | dest, src1, src2 | Vector dot product: sum(src1[i] × src2[i]) |
+| CONV | out, in, ker, dims, stride | 2D convolution using systolic array |
+| SHUFPS | dest, src1, src2, mask | Shuffle elements from two vectors using mask |
+
+### Advanced Math Functions (16)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| EXP | dest, src | Exponential: e^src |
+| LOG | dest, src | Natural logarithm: ln(src) |
+| LOG2 | dest, src | Base-2 logarithm: log₂(src) |
+| LOG10 | dest, src | Base-10 logarithm: log₁₀(src) |
+| POW | dest, base, exp | Power function: base^exp |
+| SIN | dest, src | Trigonometric sine (radians) |
+| COS | dest, src | Trigonometric cosine (radians) |
+| TAN | dest, src | Trigonometric tangent (radians) |
+| ARCTAN | dest, src | Inverse tangent (returns radians) |
+| ARCTAN2 | dest, y, x | Two-argument inverse tangent |
+| SQRT | dest, src | Square root: √src |
+| RSQRT | dest, src | Reciprocal square root: 1/√src |
+| ERF | dest, src | Error function (Gaussian integral) |
+| ERFC | dest, src | Complementary error function: 1 - erf(src) |
+| GAMMA | dest, src | Gamma function Γ(src) |
+| LGAMMA | dest, src | Natural log of gamma function: ln(Γ(src)) |
+
+### INT4 Inference Instructions (12)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| MATMULI4 | out, A, B, M, K, N | INT4 matrix multiplication: C = A × B (32-bit accumulate) |
+| SOFTMAXI4 | dest, src | INT4 softmax (dequantize → FP16 softmax → quantize) |
+| ATTENTIONI4 | out, Q, K, V, L, D | INT4 multi-head attention: softmax(Q×K^T/√d)×V |
+| GELUI4 | dest, src | INT4 GELU activation using 16-entry lookup table |
+| LAYERNORMI4 | out, in, params | INT4 layer normalization (mean, variance, scale, bias) |
+| RESIDUALI4 | out, in, res | INT4 residual connection: out = in + res (FP16 addition) |
+| MOVI4 | dest, src | Move packed INT4 data (4 values per 16-bit word) |
+| PACKI4 | dest, src | Pack 8-bit integers to 4-bit with saturation |
+| UNPACKI4 | dest, src | Unpack 4-bit to 8-bit with sign/zero extension |
+| ADDI4 | dest, src1, src2 | INT4 vector addition with saturation |
+| MULI4 | dest, src1, src2 | INT4 vector multiplication with saturation |
+| DOTI4 | dest, src1, src2 | INT4 dot product with 32-bit accumulate |
+
+### Probabilistic Inference Instructions (10)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| HMM_FORWARD | new, old, trans, emiss, scale | HMM forward algorithm step (sum over states) |
+| HMM_VITERBI | new, old, trans, emiss, back | HMM Viterbi algorithm step (max over states) |
+| HMM_BACKWARD | new, old, trans, emiss | HMM backward algorithm step |
+| HMM_UPDATE | fwd, bwd, trans, emiss, acc | Baum-Welch expectation-maximization update |
+| SOFTMAX | dest, src | Softmax function: e^x_i / Σ e^x_j |
+| LOG_SUM_EXP | dest, src | Log of sum of exponentials: log(Σ e^x_i) |
+| VECTOR_CONDITION | mask, src, cond | Test each vector element against condition, return mask |
+| VECTOR_THRESHOLD | mask, src, thresh, cond | Compare vector to scalar threshold, return mask |
+| LOG_SOFTMAX | dest, src | Log-softmax: log(e^x_i / Σ e^x_j) |
+| SPARSE_DOT | dest, dense, idx, val | Sparse-dense dot product (non-zero elements only) |
+
+### System Instructions (9)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| SYSENTER | (none) | Enter kernel mode (user→kernel, saves context) |
+| SYSEXIT | (none) | Exit kernel mode (kernel→user, restores context) |
+| IN | dest, port | Read byte/word/dword from I/O port |
+| OUT | port, src | Write byte/word/dword to I/O port |
+| CFG_VIDEO | tile, base, w, h, fmt, hz | Configure video output framebuffer |
+| CFG_AUDIO | tile, buf, size, rate, bits, ch, map | Configure audio output circular buffer |
+| RING_INIT | buf, seg, cnt, ctrl | Initialize hardware-managed circular buffer |
+| RING_WRITE | ring, data, len | Write data to circular buffer |
+| RING_SWAP | ring | Atomically swap read/write pointers (double-buffering) |
+
+### Interconnect Instructions (9)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| MAP_STORAGE | chip, block, addr, size | Map NAND flash to memory address space |
+| EXPORT_MEMORY | local, size, blade, remote, perm | Export local memory to remote blades |
+| REMOTE_CALL | blade, func, argc, args, result | Execute function on remote blade |
+| LINK_STATUS | blade, buffer | Query optical link health (signal, errors, bandwidth) |
+| RACK_UNIFY | start, end, base, interleave | Unify rack blades into single shared memory |
+| WARP_SYNC | warp | Synchronize 32 cores in a warp |
+| REMOTE_ALLOC | blade, size, align | Allocate memory on remote blade |
+| BROADCAST | (none) | Send instruction stream to all blades |
+| BARRIER_SYNC | (none) | Global barrier synchronization (all cores, all blades) |
+
+### Memory Management Instructions (7)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| SEGMENT_CREATE | parent, base, size, owner, perm, buf | Create new segment in segment tree |
+| SEGMENT_DELETE | seg | Delete segment and all children |
+| SEGMENT_MODIFY | seg, value, flag | Change segment permissions or owner |
+| CAPABILITY_GRANT | seg, target, perm, exp, buf | Create cryptographically signed capability token |
+| CAPABILITY_ACCEPT | token, name, buf | Import capability token, create local segment |
+| SEGMENT_LOOKUP | addr/buf | Return segment descriptor for address or ID |
+| TLB_INVALIDATE | addr/seg | Invalidate TLB entry (page, range, or all) |
+
+### Protection Instructions (6)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| OWNER_GET | owner_buf, anc_buf | Get current owner ID and ancestor chain |
+| OWNER_SET_PARENT | owner, parent | Set parent of owner in hierarchy (root only) |
+| RING_SET | ring, owner | Map x86 ring number (0-3) to owner ID |
+| IRQ_SET | irq, owner | Assign interrupt request line to owner |
+| IO_MAP | phys, size, seg, perm | Map I/O device into segment tree |
+| SEGMENT_WALK | addr, buf, max | Walk segment tree, return full path of descriptors |
+
+### Register Type Mapping Instructions (4)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| SET_REG_MAP | bank, type, len, round | Set default register type and vector length |
+| SET_REG_TYPE | reg, type | Set type for individual register (overrides default) |
+| GET_REG_TYPE | reg, dest | Get current type of register |
+| RESET_REG_MAP | bank | Reset register bank to default configuration |
+
+### INT4 Memory Instructions (6) - From Addendum
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| MOVI4 | dest, src | Move packed INT4 data (4 values per 16-bit word) |
+| PACKI4 | dest, src | Pack 8-bit integers to 4-bit with saturation |
+| UNPACKI4 | dest, src | Unpack 4-bit to 8-bit with sign/zero extension |
+| ADDI4 | dest, src1, src2 | INT4 vector addition with saturation |
+| MULI4 | dest, src1, src2 | INT4 vector multiplication with saturation |
+| DOTI4 | dest, src1, src2 | INT4 dot product with 32-bit accumulate |
+
+### ROMB Instructions (4) - From Addendum
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| ROMB_INSERT | romb_addr, cache_line | Insert ROMB data directly into L1 cache |
+| ROMB_IRQ | romb_addr, len, vector | Configure interrupt when ROMB data ready |
+| ROMB_PRIORITY | module, priority | Set ROMB module priority for overlay system |
+| ROMB_SELECT | module, base, size | Select ROMB module for address range |
+
+### Transactional Memory Instructions (4)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| XBEGIN | handler | Start transaction, set fallback handler address |
+| XEND | (none) | Commit transaction, make all writes visible |
+| XABORT | code | Abort transaction, jump to handler with error code |
+| XTEST | (none) | Test if currently in transaction (sets zero flag) |
+
+### Variable Precision Vector Instructions (4)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| SET_PRECISION | vec, mask | Set precision mask for vector (per-element precision) |
+| VADDP.VP | dest, src1, src2 | Vector add with variable precision (from mask) |
+| VMULP.VP | dest, src1, src2 | Vector multiply with variable precision |
+| VFMA.VP | dest, a, b, c | Vector FMA with variable precision |
+
+### In-Memory Compute Instructions (4)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| MEM_SCAN | base, size, pattern, result | Scan memory region for pattern (executed in memory controller) |
+| MEM_FILTER | base, size, pred, result | Filter records by predicate (executed in memory controller) |
+| MEM_AGGREGATE | base, size, op, result | Aggregate (sum, count, min, max) in memory controller |
+| MEM_BITMAP | base, size, pred, bitmap | Create bitmap of matching records |
+
+### Compression Instructions (7)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| MEM_COMPRESS | src, dst, size | Compress memory region (predictor + entropy encoding) |
+| MEM_DECOMPRESS | src, dst, size | Decompress memory region |
+| DME_COPY_COMP | src, dst, size, mode | Copy and compress using DME |
+| MEM_COMPRESS_STATS | base, size, buf | Get compression statistics (ratio, encoder used) |
+| MEM_COMPRESS_ADAPT | src, dst, size | Adaptive compression with learned parameters |
+| MEM_TRAIN_COMPRESS | data, size | Train compression neural network on representative data |
+| MEM_ALLOC_COMPRESS_AWARE | size, ptr | Allocate memory optimized for compression |
+
+### Parsing Instructions (HGPE) (7)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| PARSE | grammar, input, size, output | Parse input with BNF grammar, produce AST |
+| PARSE_STREAM | grammar, stream, output | Streaming parse (continuous input) |
+| PARSE_DEFINE_GRAMMAR | source, dest | Compile BNF grammar to hardware representation |
+| PARSE_MATCH | pattern, input, size, result | Test pattern match (regex or literal) |
+| AST_WALK | root, visitor, context | Traverse AST, call visitor function for each node |
+| AST_QUERY | root, path, result | Query AST with JSONPath-style expression |
+| AST_TRANSFORM | root, rules, output | Apply transformation rules to AST |
+
+### Miscellaneous Instructions (4)
+
+| Instruction | Parameters | Brief Function |
+|-------------|------------|----------------|
+| NOP | (none) | No operation (consumes 1 cycle) |
+| CPUID | leaf | Return processor identification and feature info |
+| RDTSC | (none) | Read 128-bit time-stamp counter (cycles since reset) |
+| HLT | (none) | Halt core until interrupt |
+
+---
+
+## Summary Table
+
+| Category | Number of Instructions |
+|----------|------------------------|
+| Data Movement | 5 |
+| Arithmetic | 9 |
+| Logic and Bit | 9 |
+| Control Flow | 4 |
+| Vector and SIMD | 5 |
+| Advanced Math | 16 |
+| INT4 Inference | 12 |
+| Probabilistic Inference | 10 |
+| System | 9 |
+| Interconnect | 9 |
+| Memory Management | 7 |
+| Protection | 6 |
+| Register Type Mapping | 4 |
+| INT4 Memory (Addendum) | 6 |
+| ROMB (Addendum) | 4 |
+| Transactional Memory | 4 |
+| Variable Precision Vectors | 4 |
+| In-Memory Compute | 4 |
+| Compression | 7 |
+| Parsing (HGPE) | 7 |
+| Miscellaneous | 4 |
+| **Total** | **132** |
+
+---
+
 ### Full Encoding, Assembly Examples, and Operand Specifications
 
 This volume provides the complete instruction set specification for the Sirius NEXUS AI Processor Gen5. Each instruction is documented with its encoding across all three core types (Math, Logic, System), assembly syntax, operand types, numerical formats, and multiple usage examples. The instruction set is organized into 20 functional categories, with 132 instructions total.
