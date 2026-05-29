@@ -3,7 +3,7 @@
 
 ---
 
-## A Fifty-Paragraph History of Computing Architecture
+##History of Computing Architecture
 
 The history of computing architecture begins not with silicon but with mechanical difference engines. Charles Babbage's Analytical Engine of 1837 conceived the separation of storage from computation, a duality that would persist for nearly two centuries. Babbage's design included a "store" for numbers and a "mill" for arithmetic operations, connected by a mechanism that passed punched cards between the two units. This separation was necessary because mechanical gears could not perform both functions simultaneously, but it established a pattern that every subsequent computer would follow.
 
@@ -87,60 +87,7 @@ The history of manufacturing has been a history of monolithic dies. Each process
 
 The history of this document is the culmination of these lessons. Every page that follows is informed by the failures and successes of the decades of computing that preceded it. The PIP CISC architecture does not incrementally improve existing designs; it replaces them with a unified fabric designed from first principles for the era of artificial intelligence and rack-scale computing.
 
----
-
-## Letter to TSMC Corporation
-
-**To the Office of the Chairman**
-**Taiwan Semiconductor Manufacturing Company**
-**No. 8, Li-Hsin Road 6, Hsinchu Science Park**
-**Hsinchu, Taiwan 300-096**
-
-*Esteemed Leaders of TSMC,*
-
-This letter arrives at a moment of profound opportunity for the semiconductor industry. The exponential scaling predicted by Moore's Law continues, but the performance gains that once accompanied each new process node have diminished. Transistors are smaller, but memory latency has not improved proportionally. Clock speeds have stagnated, but power density continues to increase. The industry has mastered the art of making tiny transistors, but it has forgotten the art of making fast systems. The PIP CISC architecture described in this document is a complete rethinking of the computing stack, designed to restore the performance scaling that the industry has lost.
-
-We write to you because TSMC is uniquely positioned to manufacture this architecture. The 3nm process required for the core chiplets is a TSMC exclusive. The CoWoS packaging technology that stacks HBM memory on the interposer was pioneered in your fabs. The silicon photonic integrated circuits required for the optical interconnects are manufactured using your specialty processes. No other foundry in the world possesses the combination of advanced logic, advanced packaging, and photonic integration capabilities that this design demands. TSMC is not merely a manufacturer for this project; TSMC is the only possible manufacturer.
-
-The market opportunity is substantial and immediate. The artificial intelligence industry currently spends billions of dollars on GPU clusters that achieve only 20 to 30 percent utilization, because the time spent moving data between memory, storage, and accelerators dwarfs the time spent computing. The PIP CISC architecture eliminates these bottlenecks by unifying the memory space, making storage directly addressable, and connecting blades through an optical fabric with hardware cache coherence. A cluster built on this architecture would achieve 80 to 90 percent utilization, delivering three to four times the useful work per dollar.
-
-The technical challenges of manufacturing this system are significant but solvable within TSMC's existing capabilities. The interposer must be enlarged to 150mm by 150mm, larger than any current production interposer but within the capabilities of the CoWoS-L process. The thermal encasement using pyrolytic graphite sheet has been demonstrated in research environments but not yet in production; TSMC's packaging R&D group would need to qualify the lamination process. The optical transceivers require precision alignment of fibers to photonic circuits within one micron, a capability that TSMC has already developed for its silicon photonics customer projects.
-
-The assembly process requires several new steps that are not part of standard CMOS flow. The core chiplets must be attached to the interposer using hybrid bonding rather than traditional solder bumps, a process TSMC has successfully deployed in its 3D Fabric technology. The HBM stacks must be attached using thermal compression bonding, a mature process in TSMC's memory packaging lines. The thermal encasement requires a vacuum lamination tool not typically found in semiconductor fabs, but such tools are standard in the display industry and could be adapted.
-
-The testing strategy must account for the unprecedented scale of the system. Each blade contains ten thousand Math cores, any of which could fail during manufacturing. The interposer includes a built-in self-test that can disable defective core chiplets and route around them, allowing a blade with up to five percent defective cores to ship as a lower-tier product. This redundancy dramatically improves yield and reduces the cost of defective dies.
-
-The power delivery network must be redesigned for the high current demands of ten thousand cores running simultaneously. The substrate contains twelve power planes, four for the core logic voltage and eight for the memory and I/O voltages. Each power plane is copper with a thickness of 35 microns, capable of carrying 100 amperes per millimeter of width. The voltage regulation modules are distributed across the substrate rather than centralized, reducing IR drop and improving transient response.
-
-The thermal solution must remove up to 700 watts from a blade that measures only 200mm by 500mm. The pyrolytic graphite encasement has a thermal conductivity of 1,500 W/mK in the plane of the sheet, ten times that of copper, spreading heat rapidly across the entire board. The liquid cold plate attached to the encasement removes heat at a rate of 100 watts per square centimeter, sufficient for the 700 watt total. The cooling manifold in the rack chassis circulates chilled water at 20 degrees Celsius, exhausting heat through a facility chiller.
-
-The optical interconnect system must provide error-free communication between blades over distances of up to 300 meters. The forward error correction built into the transceiver PHY corrects bit errors caused by dispersion and attenuation, achieving a bit error rate of 10^-15 at the link layer. The directory-based cache coherency protocol tolerates the variable latency of optical links, which can range from 2 microseconds for a local blade to 10 microseconds for a blade at the maximum distance.
-
-The memory system must provide a unified address space across all blades while maintaining acceptable performance. The segment tree translation adds one cycle per tree level, with a maximum of six levels for the deepest nested mappings. The TLB caches 128 complete segment descriptors, covering the most frequently accessed regions. Remote memory accesses take approximately 5 microseconds for the first access, due to the optical round trip and directory lookup, but subsequent accesses to the same cache line are serviced from the local TLB and cache.
-
-The storage system must provide memory-mapped access to NAND flash without operating system intervention. The MAP_STORAGE instruction configures the hardware address translation unit to treat flash blocks as memory pages. When a load instruction targets a flash address that is not cached in DRAM, the memory controller sends a read command directly to the flash chip, waits for the data to be read into a buffer, and then returns it to the requesting core. The entire operation takes approximately 50 microseconds, comparable to a traditional NVMe read but without the operating system context switch.
-
-The protection system must enforce isolation between tens of thousands of processes running across hundreds of blades. The segment tree is cached in hardware TLBs that are tagged with the current owner identifier. An access that violates the permission bits or the owner hierarchy causes a protection fault that is delivered to the appropriate operating system or hypervisor. The fault handler can modify the segment tree, grant the missing permission, and resume execution without the overhead of a full context switch.
-
-The instruction set must be rich enough to support all common programming models while remaining simple enough to decode at high speed. The variable-length encoding allows common instructions to be as short as 16 bits, while complex vector instructions can be as long as 512 bits. The decoder is implemented as a finite-state machine that processes 32 bits per cycle, requiring 1 to 16 cycles for the longest instructions. This is acceptable because the longest instructions are also the most computationally intensive, amortizing the decode cost over many cycles of execution.
-
-The software ecosystem must include a complete toolchain for the new instruction set. We have developed a prototype compiler based on LLVM that generates PIP CISC assembly from C, C++, and Rust source code. The compiler automatically vectorizes loops using the vector parameter encoding, eliminating the need for separate intrinsic functions. A reference implementation of the operating system kernel runs on the architecture, providing process management, virtual memory, and device drivers. Porting existing software requires recompilation only; no source changes are necessary for most applications.
-
-The business case for TSMC to manufacture this system rests on three pillars. First, the architecture establishes a new category of computing that will drive demand for TSMC's most advanced processes for years to come. Second, the design serves as a showcase for TSMC's capabilities in 3D packaging and silicon photonics, attracting other customers to these technologies. Third, the potential for TSMC to become a supplier of complete systems, not just foundry services, aligns with the company's stated strategic direction.
-
-The timeline for production is aggressive but achievable. Mask sets for the core chiplets can be completed in six months, using existing 3nm libraries. Interposer masks require four months, as the 65nm process is mature and well-characterized. First silicon is expected twelve months from project start. Initial prototypes will be packaged in the TSMC integration lab and delivered to our engineering team for validation. High-volume manufacturing could begin eighteen months after project start, assuming successful validation.
-
-The investment required is substantial but commensurate with the opportunity. Mask sets for the ten chiplet types and interposer total approximately fifty million dollars. Packaging development for the hybrid bonding and thermal encasement requires twenty million dollars. Test and validation equipment for the optical links and high-power blades adds fifteen million dollars. The total investment of eighty-five million dollars is less than TSMC spends on a single new process node development and is within the discretionary budget of the advanced packaging group.
-
-We request a meeting with TSMC's technical and business leadership to discuss this proposal in detail. We can provide simulation results, test chip designs, and prototype compiler outputs for technical review. We can also provide market analysis, customer interest letters, and revenue projections for business review. The opportunity before us is to fundamentally change the trajectory of computing. We look forward to exploring this opportunity with you.
-
-*Respectfully submitted,*
-
-*The PIP CISC Architecture Team*
-
----
-
-## A Fifty-Paragraph Introduction to Product Features
+##Introduction to Product Features
 
 The PIP CISC Unified Compute Platform represents a fundamental departure from every computer architecture that preceded it. Where traditional computers are collections of discrete components connected by buses, the PIP CISC system is a unified fabric where every component is addressable as memory. This seemingly simple change has profound implications for performance, programmability, scalability, and security. The following fifty paragraphs introduce the key features of this architecture, comparing its performance to existing systems at every turn.
 
