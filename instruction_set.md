@@ -2021,5 +2021,1827 @@ BRANCH CS, consumer_busy
 ```
 
 ---
+# Sirius NEXUS AI Processor Gen5
+
+## Rack Assembly and Task Startup Examples
+
+This document provides comprehensive examples of rack assembly, system initialization, task startup, and distributed computation across multiple blades in a Sirius NEXUS cluster. The examples demonstrate the complete workflow from physical rack assembly to running parallel AI inference workloads.
+
+---
+
+# Section 1: Rack Assembly Specifications
+
+## 1.1 Rack Chassis Specifications
+
+The Sirius NEXUS rack chassis is designed to hold 20 blade servers in a standard 19-inch, 42U form factor. The chassis measures 600mm wide, 1000mm deep, and 1867mm tall (42U). Each blade slot is 40mm tall (1U) and 500mm deep. The chassis is constructed from 1.5mm thick steel with a powder-coated finish for durability and electromagnetic shielding.
+
+**Physical Layout:**
+
+| Component | Position | Dimensions | Quantity |
+|-----------|----------|------------|----------|
+| Blade slots | Front, vertical | 200mm × 500mm × 40mm each | 20 |
+| Backplane | Rear, full height | 600mm × 1867mm × 5mm | 1 |
+| Power distribution unit | Bottom rear | 600mm × 200mm × 200mm | 2 (redundant) |
+| Management board | Top rear | 300mm × 100mm × 40mm | 1 |
+| Liquid cooling manifold | Rear, horizontal | 600mm × 100mm × 100mm | 1 |
+| Fan array | Rear, behind blades | 600mm × 1867mm × 50mm | 6 modules, 12 fans each |
+| Optical backplane | Rear, internal | 600mm × 1867mm × 10mm | 1 |
+
+**Blade Slot Numbering:**
+
+```
+Rack Front View (42U chassis, 20 blades)
+┌─────────────────────────────────────────┐
+│  Slot 20 │ Slot 19 │ Slot 18 │ Slot 17 │  Top (U42)
+├─────────────────────────────────────────┤
+│  Slot 16 │ Slot 15 │ Slot 14 │ Slot 13 │
+├─────────────────────────────────────────┤
+│  Slot 12 │ Slot 11 │ Slot 10 │ Slot 09 │
+├─────────────────────────────────────────┤
+│  Slot 08 │ Slot 07 │ Slot 06 │ Slot 05 │
+├─────────────────────────────────────────┤
+│  Slot 04 │ Slot 03 │ Slot 02 │ Slot 01 │  Bottom (U1)
+└─────────────────────────────────────────┘
+```
+
+## 1.2 Physical Assembly Instructions
+
+**Step 1: Rack Positioning and Leveling**
+
+Position the rack chassis on a level concrete floor capable of supporting 1,000 kg. The rack must be within 1 degree of level in both X and Y axes. Use a laser level to verify. Extend the four leveling feet until they contact the floor and the casters are off the ground. Tighten the locking nuts to secure the feet. The rack should not wobble when pushed.
+
+**Step 2: Power Distribution Unit Installation**
+
+Slide the two Power Distribution Units (PDUs) into the bottom rear of the rack. Each PDU provides 48V DC at 10kW, with 20 output connectors (one per blade) plus 2 spare. Connect each PDU to separate building power circuits (208V AC, 30A, 3-phase). The PDUs are hot-swappable; if one fails, the other continues to supply power to all blades. The PDUs communicate with the management board via dedicated management Ethernet.
+
+**Step 3: Management Board Installation**
+
+Install the management board in the top rear of the rack. Connect the management board to the backplane via the 100-pin management connector. Connect the management board to the facility network via the RJ45 Ethernet port. The management board runs its own Linux-based operating system and provides a web interface at https://rack-mgmt.local. Default credentials are admin/admin (must be changed on first login).
+
+**Step 4: Liquid Cooling Manifold Installation**
+
+Connect the liquid cooling manifold to the backplane at the rear of the rack. The manifold has 20 pairs of quick-disconnect fittings (supply and return) that mate with each blade's cold plate when inserted. Connect the manifold to the facility chilled water supply (20°C, 50 GPM, 100 PSI max). The manifold includes temperature sensors and flow meters that report to the management board. The facility chiller must be capable of removing 20kW per rack (1kW per blade average).
+
+**Step 5: Blade Insertion**
+
+Insert blades from the front of the rack, one at a time. Align the blade with the slot rails. Push the blade fully into the slot until the edge connector seats in the backplane and the optical transceivers mate with the backplane waveguides. You will feel a distinct click when the blade is fully seated. Rotate the ejector handles to the locked position. The blade should be flush with the front of the rack (±1mm). Repeat for all 20 blades.
+
+**Step 6: Optical Backplane Verification**
+
+After all blades are inserted, verify the optical connections. On the management board web interface, navigate to Diagnostics → Optical Links. Each blade should show "Link Up" for all 12 optical channels. Signal strength should be between -5 dBm and -15 dBm. Bit error rate should be less than 10^-15. If any link shows errors, remove and reinsert the blade, ensuring proper alignment.
+
+**Step 7: Power On Sequence**
+
+Apply power to the PDUs. The management board boots first (approx. 30 seconds). The management board then sequentially powers on the blades, starting with Slot 1 and proceeding to Slot 20, with a 1-second delay between blades to prevent inrush current spikes. Each blade takes approximately 2.5 minutes for power-on self-test. The management board web interface shows the status of each blade (Power On, POST Running, Online, Fault).
+
+**Step 8: Network Configuration**
+
+Configure the management network. Connect the management board to your facility network. Assign static IP addresses to each blade (or configure DHCP). The default IP range is 10.0.0.1-10.0.0.20 for blades 1-20. Configure the data network for the optical fabric; the optical interconnects use a separate network that does not require IP configuration.
+
+---
+
+# Section 2: Rack Unification and Initialization
+
+## 2.1 Single Rack Unification
+
+After all blades are powered on and have passed POST, unify the rack into a single shared memory space using the RACK_UNIFY instruction. This instruction must be executed from the management board or from a dedicated System core on any blade with sufficient privileges.
+
+**Assembly Code for Rack Unification:**
+
+```assembly
+; Rack unification program executed on management board
+; Unified memory space: 20 blades, 64GB each = 1.28TB total
+
+    ; Step 1: Check all blades are online
+    MOV R1, #1               ; Blade counter
+check_loop:
+    LINK_STATUS R1, status_buffer
+    LD.B R2, [status_buffer] ; Status byte: 0=offline, 1=online, 2=post, 3=fault
+    CMP R2, #1               ; Check if online
+    BRANCH NE, blade_offline
+    ADD R1, #1
+    CMP R1, #20
+    BRANCH LE, check_loop
+
+    ; Step 2: Export each blade's local memory
+    MOV R1, #1               ; Blade counter
+export_loop:
+    ; Export 64GB of local memory from blade R1 to global address space
+    ; Local base 0x00000000, size 64GB, appears at global base calculated from blade number
+    MUL R2, R1, #0x100000000 ; Global base = blade_number * 64GB
+    EXPORT_MEMORY #0x00000000, #0x100000000, R1, R2, #0x03  ; Read-write
+    ADD R1, #1
+    CMP R1, #20
+    BRANCH LE, export_loop
+
+    ; Step 3: Unify all blades with round-robin interleaving
+    ; Addresses interleaved across blades at 64-byte granularity
+    RACK_UNIFY #1, #20, #0x00000000, #64
+
+    ; Step 4: Verify unification
+    ; Test access to memory on blade 10 from blade 1
+    REMOTE_CALL #10, verify_address, #1, @0x200000000, result
+    CMP result, #0
+    BRANCH EQ, unification_failed
+
+    ; Step 5: Broadcast configuration to all blades
+    BROADCAST.WAIT
+        ; Each blade configures its local settings
+        SET_REG_MAP #MATH, #FP16, #V512, #NEAREST
+        SET_REG_MAP #ACU, #INT4, #V512, #NEAREST
+    BROADCAST_END
+
+blade_offline:
+    ; Handle offline blade
+    CALL report_offline_blade
+    HLT
+
+unification_failed:
+    CALL report_unification_failure
+    HLT
+```
+
+## 2.2 Multi-Rack Unification
+
+For a multi-rack configuration (up to 256 racks), the process is similar but requires coordination between rack management boards.
+
+```assembly
+; Multi-rack unification (256 racks, 5,120 blades)
+; Each rack has its own management board; primary rack coordinates
+
+    ; Primary rack (Rack 0) management board code:
+
+    ; Step 1: Discover all racks
+    MOV R1, #1               ; Rack counter
+rack_loop:
+    ; Send discovery packet to rack R1
+    REMOTE_CALL @rack:R1, discover_function, #0, #0, result
+    CMP result, #0
+    BRANCH EQ, rack_offline
+    ADD R1, #1
+    CMP R1, #256
+    BRANCH LE, rack_loop
+
+    ; Step 2: Assign global address ranges
+    ; Each rack gets 512TB of address space (256 racks × 512TB = 128PB total)
+    MOV R1, #1
+assign_loop:
+    MUL R2, R1, #0x80000000000   ; Rack base = rack_number * 512TB
+    REMOTE_CALL @rack:R1, assign_address_range, #2, R2, #0x80000000000, result
+    ADD R1, #1
+    CMP R1, #256
+    BRANCH LE, assign_loop
+
+    ; Step 3: Enable cross-rack coherence
+    ; Each rack's directory exports its local directory to global directory
+    MOV R1, #1
+coherence_loop:
+    REMOTE_CALL @rack:R1, enable_global_directory, #0, #0, result
+    ADD R1, #1
+    CMP R1, #256
+    BRANCH LE, coherence_loop
+
+    ; Step 4: Unify all racks
+    RACK_UNIFY.GLOBAL #1, #256, #0x00000000, #4096   ; 4KB interleaving
+```
+
+---
+
+# Section 3: Task Startup and Scheduling
+
+## 3.1 Hardware Task Scheduler Initialization
+
+The Hardware Task Scheduler (HTS) manages task queues across all cores on a blade. Initialize the scheduler during system boot.
+
+```assembly
+; Hardware Task Scheduler initialization
+; Run on System core 0 of each blade
+
+    ; Step 1: Configure task queue memory
+    ; Allocate 1MB for task queue (64K entries × 16 bytes)
+    SEGMENT_CREATE #0, #0x10000000, #20, owner_0, #0x03, queue_desc
+    LD.W queue_base, [queue_desc + #8]   ; Get allocated base address
+
+    ; Step 2: Initialize scheduler registers
+    ; SCHED_BASE - base address of task queue
+    ; SCHED_HEAD - head pointer (next task to execute)
+    ; SCHED_TAIL - tail pointer (next free slot)
+    ; SCHED_COUNT - number of pending tasks
+    MOV SCHED_BASE, queue_base
+    MOV SCHED_HEAD, #0
+    MOV SCHED_TAIL, #0
+    MOV SCHED_COUNT, #0
+
+    ; Step 3: Configure core assignment
+    ; Core 0-7: Math cores
+    ; Core 8-15: Logic cores
+    ; Core 16-19: System cores
+    ; Core 20-255: ACU cores
+    CFG_SCHED_MASK #0xFF, #MATH_CORES      ; Math cores 0-7
+    CFG_SCHED_MASK #0xFF00, #LOGIC_CORES   ; Logic cores 8-15
+    CFG_SCHED_MASK #0xF0000, #SYSTEM_CORES ; System cores 16-19
+    CFG_SCHED_MASK #0xFFF00000, #ACU_CORES ; ACU cores 20-255
+
+    ; Step 4: Enable scheduler
+    CFG_SCHED_ENABLE #1
+```
+
+## 3.2 Task Submission Example
+
+Submit tasks to the hardware scheduler using the TASK_SUBMIT instruction.
+
+```assembly
+; Task submission example: Matrix multiplication on multiple cores
+; Task function: multiply two 1024x1024 matrices
+
+    ; Define task structure
+    ; Each task: function pointer + up to 3 arguments
+task_structure:
+    DQ matmul_function     ; Function address
+    DQ A_matrix_base       ; Argument 0: matrix A
+    DQ B_matrix_base       ; Argument 1: matrix B
+    DQ result_base         ; Argument 2: result matrix
+    DQ 1024                ; Argument 3: dimension (optional)
+
+    ; Submit 64 tasks (each processes 128x128 tile)
+    MOV R1, #0             ; Task counter
+submit_loop:
+    ; Calculate tile address for this task
+    ; Each tile is 128x128 = 16K elements = 64KB (if FP16)
+    MUL R2, R1, #65536     ; Tile offset
+    ADD R3, A_matrix_base, R2
+    ADD R4, B_matrix_base, R2
+    ADD R5, result_base, R2
+
+    ; Build task descriptor in memory
+    ST.D [task_buffer], matmul_tile_function
+    ST.D [task_buffer+8], R3
+    ST.D [task_buffer+16], R4
+    ST.D [task_buffer+24], R5
+
+    ; Submit task
+    TASK_SUBMIT task_buffer, #MATH_CORE   ; Execute on any Math core
+
+    ADD R1, #1
+    CMP R1, #64
+    BRANCH LT, submit_loop
+
+    ; Wait for all tasks to complete
+    TASK_WAIT #0           ; Wait for task queue to empty
+
+    ; All tasks complete, result matrix is ready
+```
+
+## 3.3 Task Function Example (Matrix Multiplication Tile)
+
+```assembly
+; Task function: multiply a 128x128 tile
+; Input: R1 = A tile address, R2 = B tile address, R3 = result tile address
+
+matmul_tile_function:
+    ; Configure register types
+    SET_REG_MAP #MATH, #FP16, #V512, #NEAREST
+
+    ; Allocate local registers
+    ; V0-V15: row of A
+    ; V16-V31: column of B
+    ; V32: accumulator
+
+    MOV R4, #0             ; i loop counter (rows)
+row_loop:
+    ; Load row i from A tile (128 elements = 16 vectors of 8 floats each)
+    LEA R5, [R1 + R4*256]  ; Each row is 128 elements × 2 bytes = 256 bytes
+    MOV R6, #0             ; j loop counter (columns)
+col_loop:
+    ; Initialize accumulator to zero
+    XOR V32, V32
+
+    ; Load column j from B tile (128 elements)
+    LEA R7, [R2 + R6*2]    ; Each column element is 2 bytes (FP16)
+
+    ; Dot product using vector FMA
+    MOV R8, #0             ; k counter
+dot_loop:
+    ; Load 8 elements from row (V0)
+    LD.V V0, [R5 + R8*16]  ; 8 FP16 values = 16 bytes
+
+    ; Load 8 elements from column (V16)
+    LD.V V16, [R7 + R8*16]
+
+    ; FMA: accumulate += row[k] * column[k]
+    FMA.V V32, V0, V16, V32
+
+    ADD R8, #8
+    CMP R8, #128
+    BRANCH LT, dot_loop
+
+    ; Horizontal sum of V32 to get single value
+    HADDPS V32, V32, V32
+    HADDPS V32, V32, V32
+    HADDPS V32, V32, V32
+
+    ; Store result
+    MOV R9, [R3 + R4*256 + R6*2]
+    ST.H [R9], V32
+
+    ADD R6, #1
+    CMP R6, #128
+    BRANCH LT, col_loop
+
+    ADD R4, #1
+    CMP R4, #128
+    BRANCH LT, row_loop
+
+    ; Task complete
+    TASK_EXIT
+```
+
+---
+
+# Section 4: Distributed AI Inference Example
+
+## 4.1 Loading a Large Language Model Across Multiple Blades
+
+This example demonstrates loading a 1.8 trillion parameter model across 20 blades using memory-mapped ROMB Gen2 storage.
+
+```assembly
+; Load LLM across all blades in a rack
+; Model: 1.8T parameters at INT4 = 900GB
+; Each blade has 1.5TB ROMB, so model fits on one blade, but we distribute for throughput
+
+    ; Step 1: Map ROMB Gen2 on each blade
+    ; Assume model is pre-loaded on ROMB at manufacturing
+    BROADCAST.WAIT
+        ; Map ROMB Gen2 stack 0 to memory address 0x200000000 on each blade
+        MAP_STORAGE.ROMB2 #0, #0, #0x200000000, #0x17C00000000  ; 1.5TB
+    BROADCAST_END
+
+    ; Step 2: Partition model across blades
+    ; Blade 1: layers 0-9
+    ; Blade 2: layers 10-19
+    ; ... Blade 20: layers 190-199 (assuming 200-layer model)
+    MOV R1, #1
+partition_loop:
+    MUL R2, R1, #10        ; Start layer = (blade-1)*10
+    SUB R3, R2, #10        ; End layer = start layer + 9
+    REMOTE_CALL R1, load_model_layers, #2, R2, R3, result
+    ADD R1, #1
+    CMP R1, #20
+    BRANCH LE, partition_loop
+
+    ; Step 3: Load tokenizer and embedding table on all blades
+    BROADCAST.WAIT
+        ; Embedding table: 100,000 tokens × 4096 dimensions × 2 bytes = 819MB
+        DME_COPY #0x200000000, embedding_buffer, #0x33300000
+    BROADCAST_END
+```
+
+## 4.2 Distributed Inference Execution
+
+```assembly
+; Distributed inference on 20 blades
+; Each blade processes a different batch
+
+    ; Step 1: Configure inference parameters
+    MOV batch_size, #100       ; 100 sequences per blade
+    MOV seq_length, #2048      ; 2048 tokens per sequence
+    MOV total_batches, #1000   ; Total batches to process
+
+    ; Step 2: Launch inference tasks on all blades
+batch_loop:
+    MOV R1, #1                 ; Blade counter
+    MOV R2, current_batch      ; Batch ID
+
+launch_loop:
+    ; Submit inference task to blade R1
+    ; Task processes one batch on that blade
+    REMOTE_CALL.ASYNC R1, inference_task, #3, R2, batch_size, seq_length, result
+
+    ADD R1, #1
+    CMP R1, #20
+    BRANCH LE, launch_loop
+
+    ; Step 3: Wait for all blades to complete
+    BARRIER_SYNC
+
+    ; Step 4: Collect results
+    MOV R1, #1
+collect_loop:
+    REMOTE_CALL R1, get_results, #1, result_buffer, results
+    ; Aggregate results from blade R1
+    CALL aggregate_results
+    ADD R1, #1
+    CMP R1, #20
+    BRANCH LE, collect_loop
+
+    ADD current_batch, #1
+    CMP current_batch, total_batches
+    BRANCH LT, batch_loop
+
+    ; Step 5: Output final results
+    CALL output_predictions
+```
+
+## 4.3 Single Blade Inference Task
+
+```assembly
+; Inference task running on a single blade
+; Processes one batch of sequences
+
+inference_task:
+    ; Arguments:
+    ; R1 = batch_id
+    ; R2 = batch_size
+    ; R3 = seq_length
+
+    ; Configure for INT4 inference
+    SET_REG_MAP #ACU, #INT4, #V512, #NEAREST
+
+    ; Load model layers from local ROMB
+    ; Model stored at 0x200000000, each layer is 4.5GB
+    MOV R4, #0                 ; Layer counter
+layer_loop:
+    ; Load layer weights from ROMB
+    MUL R5, R4, #0x120000000  ; Layer offset = layer × 4.5GB
+    ADD R6, R5, #0x200000000  ; Layer address
+
+    ; Run attention for this layer
+    ; Q, K, V tensors are in HBM at known locations
+    ATTENTIONI4.C output, Q, K, V, seq_length, #64
+
+    ; Run FFN for this layer
+    MATMULI4.R ff_output, attn_output, weights1, #4096, #4096, #16384, bias1
+    MATMULI4 ff_output2, ff_output, weights2, #4096, #16384, #4096
+    RESIDUALI4 output, ff_output2, attn_output   ; Add residual
+
+    ; Layer normalization
+    LAYERNORMI4 output, output, layer_norm_params
+
+    ADD R4, #1
+    CMP R4, #200              ; 200 layers
+    BRANCH LT, layer_loop
+
+    ; Softmax over final logits
+    SOFTMAXI4 predictions, logits
+
+    ; Store results for this batch
+    ST.V [result_buffer], predictions
+
+    TASK_EXIT
+```
+
+---
+
+# Section 5: Full System Boot Sequence
+
+## 5.1 Blade Power-On Self-Test (POST) Sequence
+
+```assembly
+; Blade POST executed on System core 0 immediately after power-on
+
+post_sequence:
+    ; Step 1: Clock test - verify all PLLs locked
+    MOV R1, #0
+clock_test:
+    RD_PLL_STATUS R1, status
+    TEST status, #LOCK_BIT
+    BRANCH Z, clock_failed
+    ADD R1, #1
+    CMP R1, #NUM_PLLS
+    BRANCH LT, clock_test
+
+    ; Step 2: Voltage test - verify all rails within tolerance
+    RD_VOLTAGE_SENSOR #CORE_VOLTAGE, voltage
+    CMP voltage, #0x780       ; 0.8V = 0x780 in sensor units
+    BRANCH LO, voltage_failed
+    CMP voltage, #0x820
+    BRANCH HI, voltage_failed
+
+    ; Step 3: Temperature test - verify all sensors below threshold
+    MOV R1, #0
+temp_test:
+    RD_TEMP_SENSOR R1, temp
+    CMP temp, #85             ; 85°C max
+    BRANCH HI, temp_failed
+    ADD R1, #1
+    CMP R1, #NUM_SENSORS
+    BRANCH LT, temp_test
+
+    ; Step 4: Memory test - quick test of first 1GB HBM
+    MEM_TEST #0x00000000, #0x40000000, #TEST_PATTERN
+
+    ; Step 5: ROMB Gen2 test - verify signature
+    MOV R1, [0x200000000]      ; Read first word from ROMB
+    CMP R1, #ROMB_SIGNATURE
+    BRANCH NE, romb_failed
+
+    ; Step 6: Optical link test
+    MOV R1, #0
+link_test:
+    LINK_STATUS R1, link_buffer
+    LD.B R2, [link_buffer]     ; Link status
+    CMP R2, #1                 ; 1 = up
+    BRANCH NE, link_failed
+    ADD R1, #1
+    CMP R1, #12                ; 12 optical transceivers
+    BRANCH LT, link_test
+
+    ; Step 7: Core self-test
+    ; Built-in self-test of each core type
+    BIST_MATH
+    BIST_LOGIC
+    BIST_SYSTEM
+    BIST_ACU
+
+    ; Step 8: Notify management board
+    SEND_MGMT_STATUS #POST_PASSED
+
+    ; Step 9: Load bootloader from ROMB
+    DME_COPY #0x200000000, bootloader_entry, #0x10000
+    JMP bootloader_entry
+
+clock_failed:
+    SEND_MGMT_STATUS #CLOCK_FAIL
+    HLT
+voltage_failed:
+    SEND_MGMT_STATUS #VOLTAGE_FAIL
+    HLT
+temp_failed:
+    SEND_MGMT_STATUS #TEMP_FAIL
+    HLT
+romb_failed:
+    SEND_MGMT_STATUS #ROMB_FAIL
+    HLT
+link_failed:
+    SEND_MGMT_STATUS #LINK_FAIL
+    HLT
+```
+
+## 5.2 Management Board Coordination
+
+```assembly
+; Management board code - coordinates all blades in the rack
+
+management_main:
+    ; Step 1: Initialize management interfaces
+    CFG_NETWORK mgmt_ip, #255.255.255.0, #10.0.0.1
+    CFG_WEB_INTERFACE #8080
+
+    ; Step 2: Wait for all blades to complete POST
+    MOV R1, #1
+blade_wait:
+    WAIT_FOR_BLADE_STATUS R1, #POST_PASSED, #30000  ; 30 second timeout
+    CMP result, #0
+    BRANCH EQ, blade_timeout
+    ADD R1, #1
+    CMP R1, #20
+    BRANCH LE, blade_wait
+
+    ; Step 3: Power on optical fabric
+    CFG_OPTICAL_FABRIC #ENABLE
+
+    ; Step 4: Unify rack memory
+    CALL unify_rack
+
+    ; Step 5: Load and start distributed operating system
+    CALL load_distributed_os
+
+    ; Step 6: Start workload manager
+    CALL start_workload_manager
+
+    ; Step 7: Enable external access
+    CFG_EXTERNAL_ACCESS #ENABLE
+
+    ; Step 8: Main management loop
+management_loop:
+    ; Monitor blade health
+    CALL check_blade_health
+
+    ; Monitor temperature and adjust cooling
+    CALL thermal_management
+
+    ; Handle blade failures
+    CALL handle_blade_failures
+
+    ; Process management requests
+    CALL process_management_requests
+
+    WAIT #1000                ; 1 second loop
+    JMP management_loop
+
+blade_timeout:
+    ; Blade R1 failed to respond
+    CALL report_blade_failure
+    ; Continue with remaining blades
+```
+
+---
+
+# Section 6: Example Configuration Files
+
+## 6.1 Rack Configuration File (YAML)
+
+```yaml
+# Sirius NEXUS Rack Configuration
+# File: /etc/sirius/rack_config.yaml
+
+rack:
+  id: 1
+  name: "AI Training Rack A"
+  location: "Data Center West, Row 3, Position 2"
+
+  chassis:
+    model: "SN-RACK-42U"
+    serial: "SNR-2024-001"
+    power: "208V AC, 30A, 3-phase"
+    cooling: "Chilled water 20°C, 50 GPM"
+
+  blades:
+    - slot: 1
+      type: "inference-optimized"
+      cores: 149120
+      memory: "64GB HBM2e"
+      storage: "200TB NAND + 1.5TB ROMB"
+      mac: "00:1A:2B:3C:4D:01"
+      status: "online"
+
+    - slot: 2
+      type: "inference-optimized"
+      cores: 149120
+      memory: "64GB HBM2e"
+      storage: "200TB NAND + 1.5TB ROMB"
+      mac: "00:1A:2B:3C:4D:02"
+      status: "online"
+
+    # ... slots 3-19 similarly configured ...
+
+    - slot: 20
+      type: "storage-only"
+      cores: 800
+      memory: "32GB DDR4"
+      storage: "200TB NAND"
+      mac: "00:1A:2B:3C:4D:14"
+      status: "online"
+
+  network:
+    management:
+      subnet: "10.0.0.0/24"
+      gateway: "10.0.0.1"
+    data:
+      type: "optical-fabric"
+      bandwidth: "9.6 Tb/s per blade"
+      topology: "full-mesh"
+
+  cooling:
+    supply_temp: 20
+    return_temp: 30
+    flow_rate: 50
+    unit: "GPM"
+
+  power:
+    total_capacity: 20000
+    current_load: 4800
+    unit: "W"
+```
+
+## 6.2 Task Queue Configuration
+
+```assembly
+; Task queue configuration for workload manager
+; File: /etc/sirius/task_queue.cfg
+
+    ; Queue parameters
+    QUEUE_SIZE = 65536        ; 64K task slots
+    TASK_TIMEOUT = 60000      ; 60 second timeout (ms)
+    MAX_RETRIES = 3
+
+    ; Priority levels (0=highest, 7=lowest)
+    PRIORITY_REALTIME = 0
+    PRIORITY_HIGH = 2
+    PRIORITY_NORMAL = 4
+    PRIORITY_LOW = 6
+    PRIORITY_BACKGROUND = 7
+
+    ; Core assignment
+    CORE_MATH = 0x000000FF    ; Cores 0-7
+    CORE_LOGIC = 0x0000FF00   ; Cores 8-15
+    CORE_SYSTEM = 0x000F0000  ; Cores 16-19
+    CORE_ACU = 0xFFF00000     ; Cores 20-255
+
+    ; Scheduling policy
+    SCHED_POLICY = "round_robin"  ; Options: round_robin, fifo, priority
+    LOAD_BALANCING = true
+    PREEMPTION = true
+
+    ; Power management
+    POWER_GOVERNOR = "performance"  ; Options: performance, powersave, ondemand
+    IDLE_CORE_PARK = true
+    CORE_PARK_DELAY = 100    ; ms before parking idle core
+```
+
+---
+
+# Section 7: Monitoring and Debugging
+
+## 7.1 Rack Health Monitoring
+
+```assembly
+; Rack health monitoring loop
+; Runs on management board every second
+
+health_monitor:
+    ; Check each blade
+    MOV R1, #1
+blade_check:
+    ; Get blade status
+    GET_BLADE_STATUS R1, status_buffer
+
+    ; Check temperature
+    LD.W temp, [status_buffer + #8]
+    CMP temp, #80            ; Warning at 80°C
+    BRANCH HI, temp_warning
+    CMP temp, #85            ; Critical at 85°C
+    BRANCH HI, temp_critical
+
+    ; Check power consumption
+    LD.W power, [status_buffer + #12]
+    CMP power, #250          ; Blade rated at 240W
+    BRANCH HI, power_warning
+
+    ; Check memory errors
+    LD.W mem_errors, [status_buffer + #16]
+    CMP mem_errors, #100
+    BRANCH HI, mem_warning
+
+    ; Check optical link errors
+    LD.W link_errors, [status_buffer + #20]
+    CMP link_errors, #1000
+    BRANCH HI, link_warning
+
+    ADD R1, #1
+    CMP R1, #20
+    BRANCH LE, blade_check
+
+    ; Log health status
+    CALL log_health_metrics
+
+    WAIT #1000               ; 1 second
+    JMP health_monitor
+
+temp_warning:
+    CALL log_temp_warning
+    ; Increase fan speed
+    CFG_FAN_SPEED #HIGH
+    JMP blade_check
+
+temp_critical:
+    CALL log_temp_critical
+    ; Throttle blade or power off
+    CFG_BLADE_POWER R1, #OFF
+    JMP blade_check
+```
+
+## 7.2 Debug Console Commands
+
+```assembly
+; Management board debug console commands
+
+debug_command_help:
+    ; Commands available:
+    ; status      - Show rack status
+    ; blade N     - Show blade N status
+    ; memory      - Show memory utilization
+    ; tasks       - Show task queues
+    ; power       - Show power consumption
+    ; temp        - Show temperatures
+    ; links       - Show optical link status
+    ; reset N     - Reset blade N
+    ; shutdown    - Shutdown entire rack
+    ; unify       - Re-run rack unification
+    ; diag        - Run diagnostics
+
+debug_command_status:
+    ; Show rack summary
+    CALL get_rack_status
+    PRINT "Rack ID: ", rack_id
+    PRINT "Blades online: ", online_count, "/20"
+    PRINT "Total cores: ", total_cores
+    PRINT "Total memory: ", total_memory, "GB"
+    PRINT "Total storage: ", total_storage, "TB"
+    PRINT "Power: ", current_power, "/20000 W"
+    PRINT "Temperature: ", avg_temp, "C"
+
+debug_command_blade:
+    ; Show blade N status
+    ; R1 = blade number
+    GET_BLADE_STATUS R1, status_buffer
+    PRINT "Blade ", R1, ":"
+    LD.B type, [status_buffer]
+    PRINT "  Type: ", type
+    LD.W temp, [status_buffer + #8]
+    PRINT "  Temperature: ", temp, "C"
+    LD.W power, [status_buffer + #12]
+    PRINT "  Power: ", power, "W"
+    LD.W tasks, [status_buffer + #24]
+    PRINT "  Pending tasks: ", tasks
+    LD.W ipc, [status_buffer + #28]
+    PRINT "  IPC: ", ipc
+```
+
+---
+
+# Section 8: Complete Rack Assembly Checklist
+
+## 8.1 Pre-Assembly Checklist
+
+| Item | Specification | Verified |
+|------|---------------|----------|
+| Floor load capacity | ≥1,000 kg per rack | ☐ |
+| Power availability | 208V AC, 30A, 3-phase, 2 circuits | ☐ |
+| Cooling availability | Chilled water 20°C, 50 GPM | ☐ |
+| Network connectivity | 10GbE management network | ☐ |
+| Physical space | 600mm width, 1200mm depth, 2000mm height | ☐ |
+| Grounding | Earth ground connection | ☐ |
+| ESD protection | Wrist strap, grounded mat | ☐ |
+| Tools | Torque wrench, level, multimeter, fiber scope | ☐ |
+
+## 8.2 Assembly Steps Checklist
+
+| Step | Action | Verified |
+|------|--------|----------|
+| 1 | Position and level rack | ☐ |
+| 2 | Install PDUs (2 units) | ☐ |
+| 3 | Connect PDU power to building circuits | ☐ |
+| 4 | Install management board | ☐ |
+| 5 | Connect management board to network | ☐ |
+| 6 | Install liquid cooling manifold | ☐ |
+| 7 | Connect cooling to facility supply | ☐ |
+| 8 | Insert blades in slots 1-20 | ☐ |
+| 9 | Secure blades with ejector handles | ☐ |
+| 10 | Connect management cables | ☐ |
+| 11 | Power on PDUs | ☐ |
+| 12 | Verify management board boot | ☐ |
+| 13 | Monitor blade POST | ☐ |
+| 14 | Verify optical links | ☐ |
+| 15 | Run rack unification | ☐ |
+| 16 | Load operating system | ☐ |
+| 17 | Run validation tests | ☐ |
+| 18 | Enable external access | ☐ |
+
+## 8.3 Validation Tests
+
+```assembly
+; Post-assembly validation test suite
+; Run from management board
+
+validation_suite:
+    ; Test 1: Memory bandwidth
+    PRINT "Test 1: Memory bandwidth..."
+    CALL test_memory_bandwidth
+    CMP result, #3000        ; Should exceed 3 TB/s
+    BRANCH LT, test_failed
+
+    ; Test 2: Optical fabric latency
+    PRINT "Test 2: Optical fabric latency..."
+    CALL test_fabric_latency
+    CMP result, #6000        ; Should be under 6 µs
+    BRANCH HI, test_failed
+
+    ; Test 3: Cross-blade coherence
+    PRINT "Test 3: Cross-blade coherence..."
+    CALL test_coherence
+    CMP result, #0
+    BRANCH NE, test_failed
+
+    ; Test 4: AI inference throughput
+    PRINT "Test 4: AI inference throughput..."
+    CALL test_inference_throughput
+    CMP result, #600000       ; Should exceed 600K tokens/sec
+    BRANCH LT, test_failed
+
+    ; Test 5: Thermal performance
+    PRINT "Test 5: Thermal performance..."
+    CALL test_thermal
+    CALL get_max_temperature
+    CMP temp, #85
+    BRANCH HI, test_failed
+
+    PRINT "All tests passed!"
+    JMP validation_done
+
+test_failed:
+    PRINT "Test failed!"
+    CALL report_failure
+    HLT
+```
+
+---
+
+This completes the rack assembly and task startup documentation for the Sirius NEXUS AI Processor Gen5. The examples cover physical rack assembly, electrical and cooling connections, blade insertion, system initialization, rack unification, task scheduling, distributed inference, and health monitoring. The assembly checklist and validation tests provide a complete workflow for deploying a production Sirius NEXUS cluster.
+
+# Sirius NEXUS AI Processor Gen5
+
+## Complete Operand Syntax and Data Block Documentation
+
+This document provides comprehensive documentation of all operand syntax forms, addressing modes, data block definitions, and memory layout specifications for the Sirius NEXUS instruction set. Every possible operand type is described with syntax examples, encoding rules, and usage patterns.
+
+---
+
+# Section 1: Operand Types Overview
+
+The Sirius NEXUS architecture supports six operand types, each with its own syntax and encoding. The type is determined by the operand descriptor in the instruction encoding.
+
+| Type Code | Operand Type | Syntax Pattern | Example |
+|-----------|--------------|----------------|---------|
+| 0 | Register | `R[0-31]`, `V[0-63]`, `L[0-31]`, `S[0-15]` | `R1`, `V32`, `L5`, `S0` |
+| 1 | Memory | `[expression]` | `[R1]`, `[R2 + 64]`, `[R3 + R4*8]` |
+| 2 | Immediate | `#value` | `#42`, `#0xFF`, `#3.14159` |
+| 3 | Remote Memory | `@blade:address` | `@4:0x10000`, `@0xFFF:0x200000000` |
+| 4 | Vector | `vector[range]` | `V1[0:7]`, `V2[0:15:2]` |
+| 5 | Register Type Map | `%register` | `%R1`, `%V32` |
+
+---
+
+# Section 2: Register Operands
+
+## 2.1 Math Core Registers
+
+| Register Class | Count | Size | Names | Syntax | Use |
+|----------------|-------|------|-------|--------|-----|
+| Vector Registers | 64 | 512-bit | V0-V63 | `Vn` | SIMD operations |
+| Scalar Registers | 32 | 64-bit | R0-R31 | `Rn` | General purpose |
+| Mask Registers | 8 | 64-bit | K0-K7 | `Kn` | Vector masking |
+| Control Registers | 16 | 64-bit | CR0-CR15 | `CRn` | System control |
+| Status Registers | 4 | 64-bit | SR0-SR3 | `SRn` | Status flags |
+
+**Syntax Examples:**
+
+```assembly
+; Vector register operations
+MOV V1, V2              ; Copy vector V2 to V1
+ADDPS V1, V2, V3        ; V1 = V2 + V3 (element-wise)
+
+; Scalar register operations
+MOV R1, #42             ; Load immediate
+ADD R1, R2              ; R1 = R1 + R2
+
+; Mask register operations
+AND K1, K2, K3          ; K1 = K2 & K3 (bitwise)
+MOV K1, #0xFF00         ; Load mask pattern
+
+; Control register operations (privileged)
+MOV CR0, R1             ; Set control register
+MOV R1, CR0             ; Read control register
+
+; Status register operations (read-only)
+MOV R1, SR0             ; Read status flags
+```
+
+## 2.2 Logic Core Registers
+
+| Register Class | Count | Size | Names | Syntax | Use |
+|----------------|-------|------|-------|--------|-----|
+| General Registers | 32 | 64-bit | R0-R31 | `Rn` | General purpose |
+| Program Counter | 1 | 64-bit | PC | `PC` | Instruction pointer |
+| Stack Pointer | 1 | 64-bit | SP | `SP` | Software stack |
+| Link Register | 1 | 64-bit | LR | `LR` | Return address |
+| Condition Codes | 1 | 32-bit | CC | `CC` | Condition flags |
+
+**Syntax Examples:**
+
+```assembly
+; General register operations
+MOV R1, R2              ; Copy R2 to R1
+ADD R1, #1              ; Increment R1
+
+; Program counter access (read-only)
+MOV R1, PC              ; Get current instruction address
+
+; Stack pointer operations
+SUB SP, #32             ; Allocate stack space
+MOV [SP], R1            ; Push to stack
+MOV R1, [SP]            ; Pop from stack
+
+; Link register for function calls
+CALL subroutine         ; LR set to return address
+RET                     ; Returns to address in LR
+
+; Condition codes
+CMP R1, R2              ; Set condition codes
+BRANCH EQ, equal_label  ; Branch if equal
+```
+
+## 2.3 System Core Registers
+
+| Register Class | Count | Size | Names | Syntax | Use |
+|----------------|-------|------|-------|--------|-----|
+| General Registers | 16 | 64-bit | R0-R15 | `Rn` | General purpose |
+| Model-Specific | 32 | 64-bit | MSR0-MSR31 | `MSRn` | System configuration |
+| Interrupt Vector | 1 | 64-bit | IVT | `IVT` | Interrupt vector table |
+| Page Table Base | 1 | 64-bit | PTBR | `PTBR` | Page table root |
+
+**Syntax Examples:**
+
+```assembly
+; General register operations
+MOV R1, R2              ; Copy R2 to R1
+MOV R1, #0x1000         ; Load immediate
+
+; Model-specific registers (privileged)
+MOV MSR0, R1            ; Set MSR
+MOV R1, MSR0            ; Read MSR
+
+; Interrupt vector table
+MOV IVT, R1             ; Set interrupt vector base
+
+; Page table base register
+MOV PTBR, R1            ; Set page table root
+```
+
+---
+
+# Section 3: Memory Operands
+
+## 3.1 Addressing Modes
+
+| Mode | Syntax | Effective Address | Use Case |
+|------|--------|-------------------|----------|
+| Direct | `[address]` | `address` | Absolute addressing |
+| Register Indirect | `[Rn]` | `Rn` | Pointer access |
+| Base + Offset | `[Rn + offset]` | `Rn + offset` | Structure fields |
+| Base + Index | `[Rn + Rm]` | `Rn + Rm` | Array access |
+| Base + Index*Scale | `[Rn + Rm * scale]` | `Rn + (Rm × scale)` | Typed array access |
+| Base + Offset + Index | `[Rn + offset + Rm]` | `Rn + offset + Rm` | Structure array access |
+| PC-Relative | `[PC + offset]` | `PC + offset` | Position-independent code |
+| Absolute 64-bit | `[0x...]` | `64-bit address` | Large memory access |
+
+**Scale Factors:**
+
+| Scale Value | Multiply Factor | Use |
+|-------------|-----------------|-----|
+| 1 | ×1 | 8-bit elements |
+| 2 | ×2 | 16-bit elements |
+| 4 | ×4 | 32-bit elements |
+| 8 | ×8 | 64-bit elements |
+| 16 | ×16 | 128-bit elements |
+| 32 | ×32 | 256-bit elements |
+| 64 | ×64 | 512-bit elements |
+
+## 3.2 Memory Operand Syntax Examples
+
+```assembly
+; Direct addressing
+MOV R1, [0x1000]        ; Load from absolute address 0x1000
+MOV [0x2000], R1        ; Store to absolute address 0x2000
+
+; Register indirect
+MOV R1, [R2]            ; Load from address in R2
+MOV [R3], R1            ; Store to address in R3
+
+; Base + offset (displacement)
+MOV R1, [R2 + 64]       ; Load from R2 + 64
+MOV [R3 + 8], R1        ; Store to R3 + 8
+
+; Base + index
+MOV R1, [R2 + R3]       ; Load from R2 + R3
+MOV [R4 + R5], R1       ; Store to R4 + R5
+
+; Base + index × scale
+MOV R1, [R2 + R3*8]     ; Load from R2 + (R3 × 8) for 64-bit array
+MOV [R4 + R5*4], R1     ; Store to R4 + (R5 × 4) for 32-bit array
+
+; Base + offset + index × scale
+MOV R1, [R2 + 64 + R3*8] ; Load from array with header
+MOV [R4 + 16 + R5*4], R1 ; Store to structure array
+
+; PC-relative (for position-independent code)
+LEA R1, [PC + 64]       ; Get address of data at PC+64
+MOV R2, [PC + 128]      ; Load from data section
+
+; Large absolute address (64-bit)
+MOV R1, [0x100000000]   ; Load from address above 4GB
+MOV [0x200000000], R1   ; Store to address above 4GB
+```
+
+## 3.3 Memory Operand Size Specifications
+
+Size can be specified explicitly using suffixes when the operand size cannot be inferred from the instruction or registers.
+
+| Suffix | Size (bits) | Size (bytes) | Syntax Example |
+|--------|-------------|--------------|----------------|
+| `.B` | 8 | 1 | `MOV.B [R1], #0xFF` |
+| `.W` | 16 | 2 | `MOV.W [R1], #0xFFFF` |
+| `.D` | 32 | 4 | `MOV.D [R1], #0xFFFFFFFF` |
+| `.Q` | 64 | 8 | `MOV.Q [R1], #0xFFFFFFFFFFFFFFFF` |
+| `.O` | 128 | 16 | `MOV.O [R1], V1` |
+| `.Y` | 256 | 32 | `MOV.Y [R1], YMM1` |
+| `.Z` | 512 | 64 | `MOV.Z [R1], ZMM1` |
+
+**Examples:**
+
+```assembly
+; Explicit size specification
+MOV.B [R1], #0xFF       ; Store byte
+MOV.W [R1], #0xFFFF     ; Store word (16-bit)
+MOV.D [R1], #0xFFFFFFFF ; Store doubleword (32-bit)
+MOV.Q [R1], R2          ; Store quadword (64-bit)
+
+; Implicit size from source
+MOV [R1], R2            ; Size inferred from R2 (64-bit)
+MOV [R1], V1            ; Size inferred from V1 (512-bit)
+```
+
+---
+
+# Section 4: Immediate Operands
+
+## 4.1 Integer Immediate Formats
+
+| Format | Syntax | Example | Size Range |
+|--------|--------|---------|------------|
+| Decimal | `#number` | `#42` | -2^63 to 2^63-1 |
+| Hexadecimal | `#0xhex` | `#0xFF` | 0 to 2^64-1 |
+| Binary | `#0bbinary` | `#0b1010` | 0 to 2^64-1 |
+| Octal | `#0ooctal` | `#0o777` | 0 to 2^64-1 |
+| Character | `#'char'` | `#'A'` | ASCII (8-bit) |
+| String | `#"string"` | `#"Hello"` | Multiple bytes |
+
+**Syntax Examples:**
+
+```assembly
+; Decimal immediate
+MOV R1, #42             ; 42 decimal
+ADD R1, #-100           ; -100 decimal
+
+; Hexadecimal immediate
+MOV R1, #0xFF           ; 255 decimal
+AND R1, #0xFFFFFF00     ; Mask for clearing low 8 bits
+
+; Binary immediate
+MOV R1, #0b10101010     ; 170 decimal
+XOR R1, #0b11110000     ; Toggle high 4 bits
+
+; Octal immediate
+MOV R1, #0o777          ; 511 decimal
+SHL R1, #0o10           ; Shift left by 8
+
+; Character immediate
+MOV R1, #'A'            ; 65 decimal (ASCII 'A')
+CMP R1, #'\n'           ; Compare to newline (10)
+
+; String immediate (multiple bytes)
+DB #"Hello, World!\n"   ; String data in memory
+```
+
+## 4.2 Floating-Point Immediate Formats
+
+| Format | Syntax | Example | Precision |
+|--------|--------|---------|-----------|
+| Decimal | `#number` | `#3.14159` | Double (FP64) |
+| Scientific | `#valueeexp` | `#1.0e-10` | Double (FP64) |
+| Hexadecimal Float | `#0xhexp` | `#0x1.0p0` | Binary representation |
+| Single Precision | `#number.f` | `#3.14f` | Single (FP32) |
+| Half Precision | `#number.h` | `#3.14h` | Half (FP16) |
+
+**Syntax Examples:**
+
+```assembly
+; Double-precision floating-point
+FMA R1, R2, R3, #1.0   ; Add 1.0
+MOV R1, #3.141592653589793
+
+; Single-precision floating-point
+MOV R1, #3.14159f      ; Single precision (store in low 32 bits)
+ADDPS XMM1, XMM2, #1.0f ; Add 1.0f to all elements
+
+; Half-precision floating-point (for INT4 inference)
+MOV R1, #1.0h          ; Half precision
+MOVI4 V1, #0.5h        ; Load 0.5 into INT4 vector
+
+; Scientific notation
+MOV R1, #1.60217662e-19 ; Electron charge in coulombs
+MOV R1, #2.99792458e8   ; Speed of light in m/s
+
+; Hexadecimal floating-point (exact representation)
+MOV R1, #0x1.0000000000000p0 ; 1.0
+MOV R1, #0x1.8000000000000p1 ; 3.0
+```
+
+## 4.3 Special Immediate Values
+
+| Value | Syntax | Description |
+|-------|--------|-------------|
+| True | `#TRUE` or `#1` | Boolean true |
+| False | `#FALSE` or `#0` | Boolean false |
+| Pi | `#PI` | π (3.14159...) |
+| E | `#E` | e (2.71828...) |
+| Infinity | `#INF` | Infinity |
+| Not a Number | `#NAN` | Quiet NaN |
+| Maximum | `#MAX` | Maximum representable value |
+| Minimum | `#MIN` | Minimum representable value |
+
+**Syntax Examples:**
+
+```assembly
+; Boolean values
+CMP R1, #TRUE          ; Compare with true
+MOV R2, #FALSE         ; Initialize flag to false
+
+; Mathematical constants
+MOV R1, #PI            ; Load π
+MUL R2, R2, #E         ; Multiply by e
+
+; Special floating-point values
+MOV R1, #INF           ; Positive infinity
+MOV R2, #NAN           ; Not a number (quiet)
+```
+
+---
+
+# Section 5: Remote Memory Operands
+
+## 5.1 Remote Memory Syntax
+
+Remote memory operands access memory on a different blade in the rack or across the optical fabric.
+
+| Syntax | Component | Description |
+|--------|-----------|-------------|
+| `@blade:address` | blade (0-4095), address (0-2^64-1) | Remote memory access |
+| `@rack:blade:address` | rack (0-255), blade (0-19), address | Multi-rack access |
+| `@blade` | blade | Remote address in register |
+
+**Syntax Examples:**
+
+```assembly
+; Direct remote memory access
+MOV R1, @4:0x10000      ; Load from blade 4, address 0x10000
+MOV @4:0x20000, R1      ; Store to blade 4, address 0x20000
+
+; Multi-rack access (256 racks, 20 blades each)
+MOV R1, @1:5:0x10000    ; Rack 1, blade 5, address 0x10000
+
+; Remote address in register
+LEA R1, @4:0x10000      ; Load remote address into register
+MOV R2, [R1]            ; Use register as remote address
+MOV [R1], R2            ; Store using remote address register
+
+; Remote memory with offset
+MOV R1, @4:0x10000 + 64 ; Load from blade 4, address 0x10040
+MOV R1, @4:[R2]         ; Address in R2, on blade 4
+
+; Remote memory with indexing
+MOV R1, @4:[R2 + R3*8]  ; Indexed remote access
+```
+
+## 5.2 Remote Memory Size Specifications
+
+```assembly
+; Size-specified remote memory
+MOV.B R1, @4:0x10000    ; Load byte from remote
+MOV.W R1, @4:0x10000    ; Load word (16-bit) from remote
+MOV.D R1, @4:0x10000    ; Load doubleword (32-bit) from remote
+MOV.Q R1, @4:0x10000    ; Load quadword (64-bit) from remote
+```
+
+---
+
+# Section 6: Vector Operands
+
+## 6.1 Vector Register Syntax
+
+Vector operands are used with SIMD instructions and can include element range specifications.
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `Vn` | Full vector (all elements) | `V1` |
+| `Vn[start:end]` | Range of elements (inclusive) | `V1[0:7]` |
+| `Vn[start:end:stride]` | Strided range | `V1[0:15:2]` |
+| `Vn.scalar` | Broadcast scalar from element 0 | `V1.S` |
+| `Vn[element]` | Single element (scalar) | `V1[3]` |
+
+**Syntax Examples:**
+
+```assembly
+; Full vector operations
+ADDPS V1, V2, V3        ; All elements: V1[i] = V2[i] + V3[i]
+
+; Element range
+ADDPS V1[0:7], V2[0:7], V3[0:7]  ; First 8 elements only
+
+; Strided range (every other element)
+ADDPS V1[0:15:2], V2[0:15:2], V3[0:15:2]
+
+; Broadcast scalar (element 0 to all positions)
+ADDPS V1, V2, V3.S      ; V1[i] = V2[i] + V3[0]
+
+; Single element access (scalar)
+MOV R1, V1[3]           ; Move element 3 to scalar register
+MOV V2[5], R1           ; Move scalar to vector element
+
+; Vector mask operations
+ADDPS.K V1, V2, V3, K1  ; Only elements where K1 bit is 1
+```
+
+## 6.2 Vector Element Types
+
+| Suffix | Element Type | Size | Syntax Example |
+|--------|--------------|------|----------------|
+| (none) | Default | Variable | `V1[0]` |
+| `.B` | Byte (INT8) | 8-bit | `V1.B[0]` |
+| `.H` | Half-word (INT16) | 16-bit | `V1.H[0]` |
+| `.W` | Word (INT32) | 32-bit | `V1.W[0]` |
+| `.D` | Double-word (INT64) | 64-bit | `V1.D[0]` |
+| `.S` | Single-precision float | 32-bit | `V1.S[0]` |
+| `.D` | Double-precision float | 64-bit | `V1.D[0]` |
+
+**Examples:**
+
+```assembly
+; Type-specified element access
+MOV R1, V1.B[0]         ; Load 8-bit element (zero-extended)
+MOV R1, V1.H[1]         ; Load 16-bit element
+MOV R1, V1.S[2]         ; Load 32-bit float (converted to int)
+MOV R1, V1.D[3]         ; Load 64-bit element
+
+; Mixed-type vector operations
+ADDPS.V V1.S, V2.S, V3.S ; Single-precision vector add
+```
+
+---
+
+# Section 7: Register Type Map Operands
+
+## 7.1 Type Map Syntax
+
+The Register Type Map (RDTM) allows setting data types for registers.
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `%R` | Type map for scalar register | `%R1` |
+| `%V` | Type map for vector register | `%V32` |
+| `%ALL` | Type map for all registers | `%ALL` |
+
+**Type Map Values:**
+
+| Value | Type | Bits | Description |
+|-------|------|------|-------------|
+| `#INT4` | Signed 4-bit integer | 4 | -8 to 7 |
+| `#UINT4` | Unsigned 4-bit integer | 4 | 0 to 15 |
+| `#INT8` | Signed 8-bit integer | 8 | -128 to 127 |
+| `#UINT8` | Unsigned 8-bit integer | 8 | 0 to 255 |
+| `#INT16` | Signed 16-bit integer | 16 | -32,768 to 32,767 |
+| `#UINT16` | Unsigned 16-bit integer | 16 | 0 to 65,535 |
+| `#INT32` | Signed 32-bit integer | 32 | -2.1e9 to 2.1e9 |
+| `#UINT32` | Unsigned 32-bit integer | 32 | 0 to 4.3e9 |
+| `#INT64` | Signed 64-bit integer | 64 | -9.2e18 to 9.2e18 |
+| `#FP16` | Half-precision float | 16 | IEEE 754 half |
+| `#BF16` | Brain float | 16 | Google bfloat16 |
+| `#FP32` | Single-precision float | 32 | IEEE 754 single |
+| `#FP64` | Double-precision float | 64 | IEEE 754 double |
+| `#POSIT16` | Posit 16-bit | 16 | Type-III posit |
+| `#POSIT32` | Posit 32-bit | 32 | Type-III posit |
+
+**Syntax Examples:**
+
+```assembly
+; Set type for a single register
+SET_REG_TYPE R1, #INT32
+SET_REG_TYPE V1, #FP32
+SET_REG_TYPE V2, #INT4
+
+; Set type for all registers (global default)
+SET_REG_MAP #MATH, #FP32, #V512, #NEAREST
+
+; Query register type
+GET_REG_TYPE R1, type_buffer
+CMP type_buffer, #INT32
+BRANCH EQ, is_int32
+
+; Type conversion (hardware accelerated)
+CVT R1, #FP32, V1, #INT4   ; Convert INT4 vector to FP32 scalar
+```
+
+---
+
+# Section 8: Data Block Directives
+
+## 8.1 Data Definition Directives
+
+Directives for defining data blocks in assembly source code.
+
+| Directive | Description | Size per Element | Example |
+|-----------|-------------|------------------|---------|
+| `DB` | Define byte | 1 byte | `DB 0x12, 0x34, 0x56` |
+| `DW` | Define word | 2 bytes | `DW 0x1234, 0x5678` |
+| `DD` | Define doubleword | 4 bytes | `DD 0x12345678` |
+| `DQ` | Define quadword | 8 bytes | `DQ 0x123456789ABCDEF0` |
+| `DO` | Define octaword | 16 bytes | `DO 0x1234...` |
+| `DY` | Define 256-bit | 32 bytes | `DY 0x1234...` |
+| `DZ` | Define 512-bit | 64 bytes | `DZ 0x1234...` |
+| `DF` | Define float | 4 bytes | `DF 3.14159` |
+| `DD` (float) | Define double | 8 bytes | `DD 3.141592653589793` |
+| `DH` | Define half-float | 2 bytes | `DH 3.14` |
+| `DP` | Define posit | 2/4/8 bytes | `DP 3.14159` |
+| `DS` | Define string | 1 byte per char | `DS "Hello"` |
+| `DBZ` | Define block of zeros | Variable | `DBZ 1024` |
+| `ALIGN` | Align to boundary | N/A | `ALIGN 16` |
+
+## 8.2 Data Block Syntax Examples
+
+```assembly
+; Section .data (read-write)
+.data
+
+; Byte data
+int8_values:
+    DB 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+    DB -1, -2, -3
+    DB 0xFF, 0x80                    ; 255, 128
+
+; Word data (16-bit)
+int16_values:
+    DW 1000, 2000, 3000, 4000
+    DW -1000, -2000
+    DW 0xFFFF, 0x8000
+
+; Doubleword data (32-bit)
+int32_values:
+    DD 1000000, 2000000, 3000000
+    DD -1000000
+    DD 0xFFFFFFFF, 0x80000000
+
+; Quadword data (64-bit)
+int64_values:
+    DQ 10000000000, 20000000000
+    DQ -10000000000
+    DQ 0xFFFFFFFFFFFFFFFF
+
+; Floating-point data
+float_values:
+    DF 3.14159, 2.71828, 1.41421   ; Single precision
+    DD 3.141592653589793            ; Double precision
+    DH 1.0, 0.5, 0.25              ; Half precision
+
+; Posit data (for Posit arithmetic unit)
+posit_values:
+    DP 3.14159, #POSIT32           ; 32-bit posit
+    DP 3.14159, #POSIT16           ; 16-bit posit
+
+; String data
+message:
+    DS "Hello, World!\n"
+    DB 0                            ; Null terminator
+
+; Zero-initialized buffer
+buffer:
+    DBZ 1024                        ; 1KB of zeros
+
+; Aligned data
+.align 16
+aligned_data:
+    DQ 0x1122334455667788
+    DQ 0xAABBCCDDEEFF0011
+```
+
+## 8.3 Section Directives
+
+| Directive | Description | Default Attributes |
+|-----------|-------------|--------------------|
+| `.text` | Code section | Read-only, executable |
+| `.data` | Data section | Read-write |
+| `.rodata` | Read-only data | Read-only |
+| `.bss` | Zero-initialized data | Read-write, zero-initialized |
+| `.romb` | ROMB Gen2 section | Read-only, stored in optical memory |
+| `.romb2` | ROMB Gen2 section (alias) | Read-only, stored in optical memory |
+
+**Syntax Examples:**
+
+```assembly
+; Code section
+.text
+_start:
+    MOV R1, #42
+    HLT
+
+; Read-only data (stored in DRAM)
+.rodata
+constants:
+    DD 3.14159, 2.71828, 1.41421
+
+; Read-write data
+.data
+variables:
+    DQ 0
+    DBZ 4096
+
+; Zero-initialized data (does not occupy file space)
+.bss
+buffer:
+    DBZ 65536
+
+; ROMB Gen2 section (1.5TB optical memory)
+.romb
+model_weights:
+    DZ 0x...    ; Large model weights
+    DZ 0x...    ; Stored in optical memory (0.95ns access)
+```
+
+## 8.4 Label and Equate Directives
+
+| Directive | Syntax | Description |
+|-----------|--------|-------------|
+| Label | `name:` | Symbol definition |
+| Equate | `name EQU value` | Constant definition |
+| Set | `name SET value` | Re-definable constant |
+| Macro | `MACRO name args` | Macro definition |
+| Endm | `ENDM` | Macro end |
+
+**Syntax Examples:**
+
+```assembly
+; Label definition
+start_of_code:
+    MOV R1, #42
+    JMP start_of_code
+
+; Equate (constant)
+SIZE EQU 1024
+BUFFER_SIZE EQU 4096
+PI EQU 3.141592653589793
+
+; Set (re-definable)
+VERSION SET 1
+VERSION SET 2               ; Can be changed
+
+; Macro definition
+MACRO SAVE_REGS reglist
+    PUSH reglist
+ENDM
+
+; Macro usage
+SAVE_REGS {R1,R2,R3,R4}
+```
+
+---
+
+# Section 9: Memory Addressing Examples
+
+## 9.1 Array Access Patterns
+
+```assembly
+; 1D array access (C: arr[i])
+; arr base in R1, index in R2, element size 8 bytes
+LEA R3, [R1 + R2*8]        ; Address of arr[i]
+MOV R4, [R3]               ; Load arr[i]
+
+; 2D array access (C: arr[i][j])
+; arr base in R1, i in R2, j in R3, rows=100, columns=50, element size 4 bytes
+MUL R4, R2, #200           ; i * (columns * element_size) = i * 200
+MUL R5, R3, #4             ; j * element_size = j * 4
+LEA R6, [R1 + R4 + R5]     ; Address of arr[i][j]
+MOV R7, [R6]               ; Load arr[i][j]
+
+; 3D array access (C: arr[i][j][k])
+; dims: d1=10, d2=20, d3=30, element size=2 bytes
+MUL R4, R1, #1200          ; i * (d2*d3*elem) = i * 1200
+MUL R5, R2, #60            ; j * (d3*elem) = j * 60
+MUL R6, R3, #2             ; k * elem = k * 2
+LEA R7, [R0 + R4 + R5 + R6] ; Address of arr[i][j][k]
+```
+
+## 9.2 Structure Access Patterns
+
+```assembly
+; Structure definition
+; struct Point { int x; int y; int z; };  // 12 bytes
+POINT_X EQU 0
+POINT_Y EQU 4
+POINT_Z EQU 8
+
+; Array of structures
+; arr of Points, base in R1, index in R2
+MUL R3, R2, #12            ; Index * structure size
+LEA R4, [R1 + R3]          ; Base of structure
+MOV R5, [R4 + POINT_X]     ; Load point.x
+MOV R6, [R4 + POINT_Y]     ; Load point.y
+MOV R7, [R4 + POINT_Z]     ; Load point.z
+
+; Nested structure
+; struct Rectangle { struct Point top_left; struct Point bottom_right; }
+RECT_TL_X EQU 0
+RECT_TL_Y EQU 4
+RECT_TL_Z EQU 8
+RECT_BR_X EQU 12
+RECT_BR_Y EQU 16
+RECT_BR_Z EQU 20
+
+; Access rectangle fields
+LEA R4, [R1]               ; Rectangle base
+MOV R5, [R4 + RECT_TL_X]   ; top_left.x
+MOV R6, [R4 + RECT_BR_X]   ; bottom_right.x
+```
+
+## 9.3 Bit Field Access Patterns
+
+```assembly
+; Bit field extraction
+; Extract bits 4-7 from R1 (4-bit field)
+MOV R2, R1
+SHR R2, R2, #4             ; Shift right by 4
+AND R2, R2, #0x0F          ; Mask to 4 bits
+
+; Extract bit field using mask (bits 8-15)
+MOV R2, R1
+AND R2, R2, #0xFF00        ; Mask bits 8-15
+SHR R2, R2, #8             ; Shift down
+
+; Set bit field (bits 4-7 to value in R3)
+MOV R2, R1
+AND R2, R2, #0xFFFFFF0F    ; Clear bits 4-7
+SHL R4, R3, #4             ; Shift value to bits 4-7
+OR R1, R2, R4              ; Combine
+```
+
+---
+
+# Section 10: Complete Assembly Example
+
+## 10.1 Matrix Multiplication Program
+
+```assembly
+;=============================================================================
+; Matrix Multiplication Program
+; Computes C = A × B where A, B, C are 1024x1024 FP32 matrices
+; Uses the MATMULI4 instruction with INT4 quantization for inference
+;=============================================================================
+
+;=============================================================================
+; Data Section
+;=============================================================================
+.data
+
+; Matrix dimensions
+M EQU 1024
+K EQU 1024
+N EQU 1024
+MATRIX_SIZE EQU M * K * 4      ; 4MB per matrix (1024×1024×4 bytes)
+
+; Matrix buffers (allocated in HBM)
+.align 64
+matrix_A:
+    DBZ MATRIX_SIZE
+matrix_B:
+    DBZ MATRIX_SIZE
+matrix_C:
+    DBZ MATRIX_SIZE
+
+; Quantization parameters
+.align 16
+scale_A:   DF 0.0078           ; Scale factor for matrix A (INT4)
+scale_B:   DF 0.0078           ; Scale factor for matrix B (INT4)
+scale_C:   DF 0.0078           ; Scale factor for output (FP32)
+
+; Bias for activation
+bias:
+    DBZ 4096                    ; 1024 elements × 4 bytes
+
+;=============================================================================
+; Code Section
+;=============================================================================
+.text
+
+;=============================================================================
+; Main entry point
+;=============================================================================
+_start:
+    ; Initialize type map for INT4 inference
+    SET_REG_MAP #ACU, #INT4, #V512, #NEAREST
+
+    ; Load matrices from ROMB (simulated - actual data would be in ROMB)
+    DME_COPY.ROMB2 #0x200000000, matrix_A, MATRIX_SIZE
+    DME_COPY.ROMB2 #0x200400000, matrix_B, MATRIX_SIZE
+
+    ; Set quantization scales
+    MOV R1, #scale_A
+    SET_QUANT_SCALE #0, [R1]    ; Scale for tensor 0 (A)
+    SET_QUANT_SCALE #1, scale_B ; Scale for tensor 1 (B)
+
+    ; Perform matrix multiplication: C = A × B
+    ; Using MATMULI4 which operates on INT4 and accumulates in 32-bit
+    MATMULI4 matrix_C, matrix_A, matrix_B, #M, #K, #N
+
+    ; Apply bias and ReLU activation
+    MATMULI4.R matrix_C, matrix_C, bias, #M, #N, #1
+
+    ; Store result back to ROMB (if needed)
+    DME_COPY matrix_C, #0x200800000, MATRIX_SIZE
+
+    ; Halt
+    HLT
+
+;=============================================================================
+; Matrix multiplication using explicit loops (fallback)
+;=============================================================================
+matmul_scalar:
+    ; Input: R1 = A base, R2 = B base, R3 = C base
+    ; R4 = M, R5 = K, R6 = N
+
+    ; Configure for FP32
+    SET_REG_MAP #MATH, #FP32, #V512, #NEAREST
+
+    MOV R7, #0                  ; i = 0
+outer_loop:
+    MOV R8, #0                  ; j = 0
+middle_loop:
+    MOV R9, #0                  ; k = 0
+    MOV V0, #0.0                ; accumulator = 0
+inner_loop:
+    ; Load A[i][k] and B[k][j]
+    LEA R10, [R1 + R7*R5*4 + R9*4]  ; A[i][k] address
+    LEA R11, [R2 + R9*R6*4 + R8*4]  ; B[k][j] address
+    LD.S V1, [R10]                  ; Load A[i][k]
+    LD.S V2, [R11]                  ; Load B[k][j]
+
+    ; FMA: accumulator += A[i][k] * B[k][j]
+    FMA V0, V1, V2, V0
+
+    ADD R9, #1
+    CMP R9, R5
+    BRANCH LT, inner_loop
+
+    ; Store result to C[i][j]
+    LEA R10, [R3 + R7*R6*4 + R8*4]
+    ST.S [R10], V0
+
+    ADD R8, #1
+    CMP R8, R6
+    BRANCH LT, middle_loop
+
+    ADD R7, #1
+    CMP R7, R4
+    BRANCH LT, outer_loop
+
+    RET
+
+;=============================================================================
+; Optimized matrix multiplication using vector FMA
+;=============================================================================
+matmul_vector:
+    ; Input: R1 = A base, R2 = B base, R3 = C base
+    ; R4 = M, R5 = K, R6 = N
+
+    ; Each iteration processes 8 columns of C (256 bits = 8 × FP32)
+    MOV R7, #0                  ; i = 0
+v_outer_loop:
+    MOV R8, #0                  ; j = 0 (in blocks of 8)
+v_middle_loop:
+    MOV V0, #0.0                ; Initialize accumulators (8 lanes)
+    MOV V1, #0.0
+    MOV V2, #0.0
+    MOV V3, #0.0
+    MOV V4, #0.0
+    MOV V5, #0.0
+    MOV V6, #0.0
+    MOV V7, #0.0
+
+    MOV R9, #0                  ; k = 0
+v_inner_loop:
+    ; Load row from A (8 elements)
+    LEA R10, [R1 + R7*R5*4 + R9*4]
+    LDPS V8, [R10]              ; Load 8 elements from A[i][k:k+7]
+
+    ; Load 8 columns from B
+    LEA R11, [R2 + R9*R6*4 + R8*32]  ; B[k][j:j+7]
+    LDPS V9, [R11]              ; Load 8 elements from B[k][j:j+7]
+
+    ; Multiply-add
+    FMA.V V0, V8, V9, V0
+
+    ADD R9, #1
+    CMP R9, R5
+    BRANCH LT, v_inner_loop
+
+    ; Store results
+    LEA R10, [R3 + R7*R6*4 + R8*32]
+    STPS [R10], V0
+
+    ADD R8, #8
+    CMP R8, R6
+    BRANCH LT, v_middle_loop
+
+    ADD R7, #1
+    CMP R7, R4
+    BRANCH LT, v_outer_loop
+
+    RET
+
+;=============================================================================
+; END OF PROGRAM
+;=============================================================================
+```
+
+---
+
+This document provides complete syntax documentation for all operand types supported by the Sirius NEXUS instruction set, including register operands, memory operands with all addressing modes, immediate operands in various formats, remote memory operands for distributed computing, vector operands with range specifications, register type map operands for mixed-precision computation, and data block directives for defining memory contents. The examples demonstrate practical usage patterns for arrays, structures, and complete programs.
 
 This concludes Volume 1 of the Sirius NEXUS AI Processor Gen5 documentation. The complete instruction set comprises 132 instructions across 20 functional categories, with full encoding specifications for Math, Logic, and System cores. Each instruction is documented with assembly syntax, operand types, numerical formats, and multiple usage examples.
