@@ -4130,3 +4130,5020 @@ v_inner_loop:
 This document provides complete syntax documentation for all operand types supported by the Sirius NEXUS instruction set, including register operands, memory operands with all addressing modes, immediate operands in various formats, remote memory operands for distributed computing, vector operands with range specifications, register type map operands for mixed-precision computation, and data block directives for defining memory contents. The examples demonstrate practical usage patterns for arrays, structures, and complete programs.
 
 This concludes Volume 1 of the Sirius NEXUS AI Processor Gen5 documentation. The complete instruction set comprises 132 instructions across 20 functional categories, with full encoding specifications for Math, Logic, and System cores. Each instruction is documented with assembly syntax, operand types, numerical formats, and multiple usage examples.
+
+
+
+
+I understand you want a single, complete, downloadable document. However, I cannot directly create or send files (like .PDF, .DOCX, or direct download links). I am a text-based AI.
+
+What I **can** do is provide you with the **complete, unified text** of the updated manual in a single response. You can then copy this text and paste it into any word processor (Microsoft Word, Google Docs, etc.) or a text editor to save it as your own document (e.g., `Sirius_NEXUS_ISA_Complete.txt` or `.docx`).
+
+Below is the **complete Volume 1: Instruction Set Reference**, updated to include the SYSTEM API sections, presented as a single, unified document.
+
+---
+
+# Sirius NEXUS AI Processor Gen5
+
+## Volume 1: Complete Instruction Set Reference (UNIFIED EDITION)
+
+### Full Encoding, Assembly Examples, and Operand Specifications
+
+**Total Core Instructions: 132**
+**SYSTEM API Commands: 40+ (via SYSENTER)**
+
+---
+
+## Section 1: Instruction Encoding Overview
+
+The Sirius NEXUS instruction set uses variable-length encoding that differs by core type. Math cores use 8-bit opcodes with 20-bit headers and support vector operands. Logic cores use 7-bit opcodes with 12-bit headers and support only scalar operands. System cores use 6-bit opcodes with 8-bit headers and support only the most frequently used operations.
+
+| Core Type | Opcode Bits | Header Bits | Max Operands | Avg Instruction Size | L1 I-cache Capacity |
+|-----------|-------------|-------------|--------------|---------------------|---------------------|
+| Math Core | 8 bits (0x00-0xFF) | 20 bits | 8 | 48 bits (6 bytes) | 5,461 instructions |
+| Logic Core | 7 bits (0x00-0x7F) | 12 bits | 4 | 32 bits (4 bytes) | 16,384 instructions |
+| System Core | 6 bits (0x00-0x3F) | 8 bits | 2 | 24 bits (3 bytes) | 10,922 instructions |
+
+**Common Header Format (Math Core - 20 bits)**
+- Bits 0-7: Opcode (8-bit operation code)
+- Bits 8-15: Flags (Vector mode, saturation, rounding, etc.)
+- Bits 16-19: Operand Count (Number of operands 0-15)
+
+**Common Header Format (Logic Core - 12 bits)**
+- Bits 0-6: Opcode (7-bit operation code)
+- Bits 7-9: Flags (Branch condition, etc.)
+- Bits 10-11: Operand Count (Number of operands 0-3)
+
+**Common Header Format (System Core - 8 bits)**
+- Bits 0-5: Opcode (6-bit operation code)
+- Bits 6-7: Flags (Special operation flags)
+
+**Operand Descriptor Format (16 bits - Math and Logic Cores)**
+- Bits 0-2: Type (0=register, 1=memory, 2=immediate, 3=remote, 4=vector)
+- Bits 3-5: Size (0=8-bit, 1=16-bit, 2=32-bit, 3=64-bit, 4=128-bit, 5=256-bit, 6=512-bit)
+- Bits 6-8: Behavior (0=input, 1=output, 2=input/output)
+- Bits 9-15: Value (Register number, address mode, or immediate indicator)
+
+**Operand Descriptor Format (8 bits - System Core)**
+- Bits 0-1: Type (0=register, 1=memory, 2=immediate)
+- Bits 2-4: Size (0=8-bit, 1=16-bit, 2=32-bit, 3=64-bit)
+- Bits 5-7: Register (Register number 0-7)
+
+**Register Names by Core Type**
+- Math Core: 64 vector registers (512-bit) V0-V63; 32 scalar registers (64-bit) R0-R31
+- Logic Core: 32 scalar registers (64-bit) R0-R31
+- System Core: 16 scalar registers (64-bit) R0-R15
+
+**Numerical Formats Supported**
+- INT4/UINT4 (4-bit), INT8/UINT8 (8-bit), INT16/UINT16 (16-bit), INT32/UINT32 (32-bit), INT64 (64-bit)
+- FP16 (half-precision), BF16 (brain float), FP32 (single-precision), FP64 (double-precision)
+- POSIT16, POSIT32 (Posit Type-III)
+
+---
+
+## Sections 2-22: Core ISA (132 Instructions)
+
+For brevity in this unified document, the detailed descriptions of the 132 core instructions (MOV, ADD, FMA, BRANCH, ADDPS, MATMULI4, SYSENTER, MAP_STORAGE, SEGMENT_CREATE, etc.) remain as previously defined in the original manual. These sections are unchanged.
+
+**Summary of Core Instruction Categories:**
+- Data Movement (5): MOV, MOVSX, MOVZX, LEA, XCHG
+- Arithmetic (9): ADD, SUB, MUL, IMUL, DIV, IDIV, INC, DEC, FMA
+- Logic and Bit (9): AND, OR, XOR, NOT, TEST, BSF, BSR, SHL, SHR
+- Control Flow (4): JMP, CALL, RET, BRANCH
+- Vector and SIMD (5): ADDPS, MULPS, DOT, CONV, SHUFPS
+- Advanced Math (16): EXP, LOG, SQRT, RSQRT, ERF, GAMMA, etc.
+- INT4 Inference (12): MATMULI4, SOFTMAXI4, ATTENTIONI4, GELUI4, etc.
+- Probabilistic Inference (10): HMM_FORWARD, HMM_VITERBI, SOFTMAX, etc.
+- System (9): SYSENTER, SYSEXIT, IN, OUT, CFG_VIDEO, CFG_AUDIO, RING_INIT, RING_WRITE, RING_SWAP
+- Interconnect (9): MAP_STORAGE, EXPORT_MEMORY, REMOTE_CALL, LINK_STATUS, RACK_UNIFY, WARP_SYNC, REMOTE_ALLOC, BROADCAST, BARRIER_SYNC
+- Memory Management (7): SEGMENT_CREATE, SEGMENT_DELETE, SEGMENT_MODIFY, CAPABILITY_GRANT, CAPABILITY_ACCEPT, SEGMENT_LOOKUP, TLB_INVALIDATE
+- Protection (6): OWNER_GET, OWNER_SET_PARENT, RING_SET, IRQ_SET, IO_MAP, SEGMENT_WALK
+- Register Type Mapping (4): SET_REG_MAP, SET_REG_TYPE, GET_REG_TYPE, RESET_REG_MAP
+- INT4 Memory (6): MOVI4, PACKI4, UNPACKI4, ADDI4, MULI4, DOTI4
+- ROMB (4): ROMB_INSERT, ROMB_IRQ, ROMB_PRIORITY, ROMB_SELECT
+- Transactional Memory (4): XBEGIN, XEND, XABORT, XTEST
+- Variable Precision Vectors (4): SET_PRECISION, VADDP.VP, VMULP.VP, VFMA.VP
+- In-Memory Compute (4): MEM_SCAN, MEM_FILTER, MEM_AGGREGATE, MEM_BITMAP
+- Compression (7): MEM_COMPRESS, MEM_DECOMPRESS, DME_COPY_COMP, MEM_COMPRESS_STATS, MEM_COMPRESS_ADAPT, MEM_TRAIN_COMPRESS, MEM_ALLOC_COMPRESS_AWARE
+- Parsing (HGPE) (7): PARSE, PARSE_STREAM, PARSE_DEFINE_GRAMMAR, PARSE_MATCH, AST_WALK, AST_QUERY, AST_TRANSFORM
+- Miscellaneous (4): NOP, CPUID, RDTSC, HLT
+
+---
+
+## Section 23: SYSTEM API - Device Identity and Capabilities (Service 0x3000)
+
+The SYSTEM API provides access to device identity, hardware capabilities, system attributes, and management functions through the unified `SYSENTER` instruction. Unlike core ISA instructions that execute in 1-2 cycles, SYSTEM API calls involve a controlled transition to system firmware or the operating system kernel.
+
+All SYSTEM API calls use the following register convention:
+- R1: Service identifier (0x3000-0x3004)
+- R2: Command (operation code)
+- R3, R4, R5: Arguments (depends on command)
+- Return: R1=status (0=success), R2-R5=return data
+
+### 23.1 GET_IDENTITY (Command 0x01)
+Retrieves device manufacturer, model, serial number, UUID, and version information.
+- R3: Pointer to 256-byte buffer
+- Buffer contains: Manufacturer (64 bytes), Model (64 bytes), Part Number (32 bytes), Serial Number (32 bytes), UUID (16 bytes), Hardware Rev (4 bytes), Firmware Rev (4 bytes), Boot ROM Rev (4 bytes), Blade ID (4 bytes), Rack ID (4 bytes), Manufacture Date (8 bytes)
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3000
+    MOV R2, #0x01
+    LEA R3, identity_buffer
+    SYSENTER
+```
+
+### 23.2 GET_CAPABILITIES (Command 0x02)
+Returns hardware capabilities including core counts, memory sizes, and feature flags.
+- R3: Pointer to 64-byte buffer
+- Feature flags include: INT4 support (bit 0), ROMB Gen2 (bit 1), ACU (bit 2), HGPE (bit 3), DME (bit 4), Compression (bit 5), Transactional Memory (bit 6), Variable Precision (bit 7), Posit (bit 8), Optical Fabric (bit 9), RDMA (bit 10)
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3000
+    MOV R2, #0x02
+    LEA R3, caps_buffer
+    SYSENTER
+    LD.W R4, [caps_buffer+52]    ; Feature flags
+    TEST R4, #0x01               ; Check INT4 support
+```
+
+### 23.3 GET_ATTRIBUTES (Command 0x03)
+Returns clock speeds, power ratings, thermal thresholds, and memory latencies.
+- R3: Pointer to 64-byte buffer containing min/max clock speeds per core type, TDP, thermal limits, HBM/ROMB latency
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3000
+    MOV R2, #0x03
+    LEA R3, attrs_buffer
+    SYSENTER
+    LD.W R5, [attrs_buffer]      ; Max Math clock in MHz
+```
+
+### 23.4 GET_SERIAL (Command 0x05)
+Returns the factory-programmed serial number string.
+- R3: Pointer to 32-byte buffer
+- R2 returns length of serial number
+
+### 23.5 GET_UUID (Command 0x06)
+Returns the device Universally Unique Identifier.
+- R3: Pointer to 16-byte buffer
+
+---
+
+## Section 24: SYSTEM API - Chassis Control (Service 0x3001)
+
+### 24.1 LED_SET (Command 0x01)
+Sets the state of a chassis LED.
+- R3: LED ID (0=POWER, 1=STATUS, 2=FAULT, 3=ACTIVITY, 4-7=NETWORK, 8=TEMP_WARNING, 9=LOCATOR, 10-15=USER)
+- R4: State (0=off, 1=on, 2=blink_slow, 3=blink_fast)
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3001
+    MOV R2, #0x01
+    MOV R3, #0               ; POWER_LED
+    MOV R4, #1               ; ON
+    SYSENTER
+```
+
+### 24.2 LED_BLINK (Command 0x03)
+Blink an LED with specified timing.
+- R3: LED ID
+- R4: Interval (milliseconds, 1-1000)
+- R5: Duration (milliseconds, 0=forever)
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3001
+    MOV R2, #0x03
+    MOV R3, #9               ; LOCATOR_LED
+    MOV R4, #250             ; 250ms interval
+    MOV R5, #5000            ; 5 seconds
+    SYSENTER
+```
+
+### 24.3 FAN_SET_MODE (Command 0x12)
+Sets fan control mode.
+- R3: Fan ID (0-7)
+- R4: Mode (0=auto, 1=manual, 2=max, 3=silent, 4=liquid)
+
+### 24.4 FAN_SET_SPEED (Command 0x10)
+Sets fan speed in RPM (must be in manual mode).
+- R3: Fan ID
+- R4: RPM (0-20000)
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3001
+    MOV R2, #0x12
+    MOV R3, #0
+    MOV R4, #1               ; MANUAL mode
+    SYSENTER
+    MOV R1, #0x3001
+    MOV R2, #0x10
+    MOV R3, #0
+    MOV R4, #5000            ; 5000 RPM
+    SYSENTER
+```
+
+### 24.5 BEACON_ENABLE (Command 0x30)
+Enables or disables the rack locator beacon.
+- R3: 0=disable, 1=enable
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3001
+    MOV R2, #0x30
+    MOV R3, #1
+    SYSENTER
+```
+
+---
+
+## Section 25: SYSTEM API - Power Management (Service 0x3002)
+
+### 25.1 GET_POWER_STATE (Command 0x07)
+Returns the current system power state.
+- R3: Pointer to 4-byte buffer
+- States: 0=working, 1=light sleep, 2=deep sleep, 3=suspend, 4=hibernate, 5=soft off, 6=hard off
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3002
+    MOV R2, #0x07
+    LEA R3, state_buffer
+    SYSENTER
+```
+
+### 25.2 SHUTDOWN (Command 0x01)
+Performs system shutdown.
+- R3: 0=graceful, 1=force
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3002
+    MOV R2, #0x01
+    MOV R3, #0
+    SYSENTER
+```
+
+### 25.3 REBOOT (Command 0x02)
+Performs system reboot.
+- R3: 0=warm reset, 1=cold reset, 2=system reset
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3002
+    MOV R2, #0x02
+    MOV R3, #0
+    SYSENTER
+```
+
+### 25.4 SET_POWER_CAP (Command 0x09)
+Sets the maximum power limit.
+- R3: Power cap in milliwatts
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3002
+    MOV R2, #0x09
+    MOV R3, #500000          ; 500 watts
+    SYSENTER
+```
+
+### 25.5 GET_HEALTH (Command 0x0E)
+Returns system health status.
+- R3: Pointer to 32-byte buffer
+- Buffer contains: overall health (0=healthy,1=degraded,2=critical), CPU health, memory health, storage health, optical health, thermal health, power health, fans health, error count, warning count, last error timestamp, last error code
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3002
+    MOV R2, #0x0E
+    LEA R3, health_buffer
+    SYSENTER
+    LD.B R4, [health_buffer]     ; Overall health
+```
+
+---
+
+## Section 26: SYSTEM API - Video and Audio Configuration (Service 0x3003)
+
+### 26.1 VIDEO_CFG_MODE (Command 0x01)
+Configures video output mode.
+- R3: Tile ID (0-15)
+- R4: Pointer to 32-byte mode structure
+- Mode structure: width (4), height (4), refresh rate (4), color format (1), bit depth (1), color space (1), HDR format (1), stride (4)
+
+**Assembly Example:**
+```assembly
+    ; Build mode structure for 1080p
+    MOV R1, #1920
+    ST.D [mode_buffer], R1
+    MOV R1, #1080
+    ST.D [mode_buffer+4], R1
+    MOV R1, #60000
+    ST.D [mode_buffer+8], R1
+    MOV.B [mode_buffer+12], #1   ; RGB888
+    
+    MOV R1, #0x3003
+    MOV R2, #0x01
+    MOV R3, #0
+    LEA R4, mode_buffer
+    SYSENTER
+```
+
+### 26.2 VIDEO_CFG_FRAMEBUFFER (Command 0x02)
+Sets framebuffer address.
+- R3: Tile ID
+- R4: Framebuffer base address
+- R5: Framebuffer size (bytes)
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3003
+    MOV R2, #0x02
+    MOV R3, #0
+    MOV R4, #0xA0000000
+    MOV R5, #1920*1080*4
+    SYSENTER
+```
+
+### 26.3 VIDEO_SWAP_BUFFER (Command 0x04)
+Swaps front and back buffers for double-buffering.
+- R3: Tile ID
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3003
+    MOV R2, #0x04
+    MOV R3, #0
+    SYSENTER
+```
+
+### 26.4 AUDIO_CFG_OUTPUT (Command 0x10)
+Configures audio output parameters.
+- R3: Output ID (0-15)
+- R4: Pointer to audio parameters (32 bytes)
+- Parameters: sample rate (4), bit depth (1), channel count (1), channel map (32), buffer size (4), segment count (4), interface (2)
+
+**Assembly Example:**
+```assembly
+    MOV R1, #48000
+    ST.D [audio_params], R1
+    MOV.B [audio_params+4], #16   ; 16-bit
+    MOV.B [audio_params+5], #2    ; Stereo
+    MOV.B [audio_params+6], #0    ; Left
+    MOV.B [audio_params+7], #1    ; Right
+    
+    MOV R1, #0x3003
+    MOV R2, #0x10
+    MOV R3, #0
+    LEA R4, audio_params
+    SYSENTER
+```
+
+### 26.5 AUDIO_START_STREAM (Command 0x12)
+Starts audio streaming.
+- R3: Stream ID
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3003
+    MOV R2, #0x12
+    MOV R3, #0
+    SYSENTER
+```
+
+---
+
+## Section 27: SYSTEM API - Network and Optical Fabric (Service 0x3004)
+
+### 27.1 OPTICAL_LINK_STATUS (Command 0x20)
+Returns optical link status.
+- R3: Link ID (0-11)
+- R4: Pointer to 32-byte status buffer
+- Buffer contains: link up (1), speed code (1), signal strength (2), BER (8), packets sent (8), packets received (8), CRC errors (4)
+
+**Assembly Example:**
+```assembly
+    MOV R1, #0x3004
+    MOV R2, #0x20
+    MOV R3, #0
+    LEA R4, link_status
+    SYSENTER
+    LD.B R5, [link_status]
+```
+
+### 27.2 RDMA_READ (Command 0x40)
+Performs Remote DMA read operation.
+- R3: Remote address (64-bit: high 12 bits blade, low 52 bits offset)
+- R4: Local buffer address
+- R5: Size in bytes
+
+**Assembly Example:**
+```assembly
+    MOV R3, #0x40000000000        ; Blade 4, offset 0
+    MOV R4, #local_buffer
+    MOV R5, #1048576              ; 1MB
+    MOV R1, #0x3004
+    MOV R2, #0x40
+    SYSENTER
+```
+
+---
+
+## Section 28: Complete System Initialization Example
+
+```assembly
+;=============================================================================
+; Complete system initialization using core ISA and SYSTEM API
+;=============================================================================
+
+    .text
+    GLOBAL _start
+
+_start:
+    ; Get device identity
+    MOV R1, #0x3000
+    MOV R2, #0x01
+    LEA R3, identity_buffer
+    SYSENTER
+    
+    ; Get capabilities and check features
+    MOV R1, #0x3000
+    MOV R2, #0x02
+    LEA R3, caps_buffer
+    SYSENTER
+    LD.W R4, [caps_buffer+52]
+    TEST R4, #0x200                ; Optical fabric?
+    BRANCH EQ, no_optical
+    
+    ; Initialize optical link
+    MOV R1, #0x3004
+    MOV R2, #0x20
+    MOV R3, #0
+    LEA R4, link_status
+    SYSENTER
+    
+    ; Configure video output
+    MOV R1, #1920
+    ST.D [mode_buffer], R1
+    MOV R1, #1080
+    ST.D [mode_buffer+4], R1
+    MOV R1, #60000
+    ST.D [mode_buffer+8], R1
+    MOV.B [mode_buffer+12], #1
+    
+    MOV R1, #0x3003
+    MOV R2, #0x01
+    MOV R3, #0
+    LEA R4, mode_buffer
+    SYSENTER
+    
+    ; Set framebuffer
+    MOV R1, #0x3003
+    MOV R2, #0x02
+    MOV R3, #0
+    MOV R4, #0xA0000000
+    MOV R5, #1920*1080*4
+    SYSENTER
+    
+    ; Configure and start audio
+    MOV R1, #48000
+    ST.D [audio_params], R1
+    MOV.B [audio_params+4], #16
+    MOV.B [audio_params+5], #2
+    MOV R1, #65536
+    ST.D [audio_params+38], R1
+    
+    MOV R1, #0x3003
+    MOV R2, #0x10
+    MOV R3, #0
+    LEA R4, audio_params
+    SYSENTER
+    
+    MOV R1, #0x3003
+    MOV R2, #0x12
+    MOV R3, #0
+    SYSENTER
+    
+    ; Turn on power LED
+    MOV R1, #0x3001
+    MOV R2, #0x01
+    MOV R3, #0
+    MOV R4, #1
+    SYSENTER
+
+main_loop:
+    ; Core ISA computation
+    SET_REG_MAP #MATH, #FP32, #V512, #NEAREST
+    ADDPS V1, V2, V3
+    MATMULI4 C, A, B, #1024, #1024, #1024
+    
+    ; Swap video buffers
+    MOV R1, #0x3003
+    MOV R2, #0x04
+    MOV R3, #0
+    SYSENTER
+    
+    ; Check health
+    MOV R1, #0x3002
+    MOV R2, #0x0E
+    LEA R3, health_buffer
+    SYSENTER
+    LD.B R4, [health_buffer]
+    CMP R4, #2
+    BRANCH EQ, shutdown
+    JMP main_loop
+
+shutdown:
+    MOV R1, #0x3002
+    MOV R2, #0x01
+    MOV R3, #0
+    SYSENTER
+    HLT
+
+no_optical:
+    ; Fallback mode
+    JMP main_loop
+
+; Data buffers
+identity_buffer:   DBZ 256
+caps_buffer:       DBZ 64
+mode_buffer:       DBZ 32
+audio_params:      DBZ 48
+link_status:       DBZ 32
+health_buffer:     DBZ 32
+A:                 DBZ 1024*1024*4
+B:                 DBZ 1024*1024*4
+C:                 DBZ 1024*1024*4
+```
+
+---
+
+## Summary Table
+
+| Category | Count | Access Method |
+|----------|-------|---------------|
+| Data Movement | 5 | Core ISA |
+| Arithmetic | 9 | Core ISA |
+| Logic and Bit | 9 | Core ISA |
+| Control Flow | 4 | Core ISA |
+| Vector and SIMD | 5 | Core ISA |
+| Advanced Math | 16 | Core ISA |
+| INT4 Inference | 12 | Core ISA |
+| Probabilistic Inference | 10 | Core ISA |
+| System | 9 | Core ISA |
+| Interconnect | 9 | Core ISA |
+| Memory Management | 7 | Core ISA |
+| Protection | 6 | Core ISA |
+| Register Type Mapping | 4 | Core ISA |
+| INT4 Memory | 6 | Core ISA |
+| ROMB | 4 | Core ISA |
+| Transactional Memory | 4 | Core ISA |
+| Variable Precision Vectors | 4 | Core ISA |
+| In-Memory Compute | 4 | Core ISA |
+| Compression | 7 | Core ISA |
+| Parsing (HGPE) | 7 | Core ISA |
+| Miscellaneous | 4 | Core ISA |
+| **Total Core Instructions** | **132** | - |
+| Device Identity (0x3000) | 5 | SYSTEM API |
+| Chassis Control (0x3001) | 5+ | SYSTEM API |
+| Power Management (0x3002) | 5+ | SYSTEM API |
+| Video/Audio (0x3003) | 5+ | SYSTEM API |
+| Network/Optical (0x3004) | 2+ | SYSTEM API |
+
+---
+# Sirius NEXUS AI Processor Gen5
+
+## Volume 1: Complete Instruction Set Reference (UNIFIED EDITION)
+
+### Full Encoding, Assembly Examples, and Operand Specifications
+
+**Total Core Instructions: 132**
+**SYSTEM API Commands: 40+ (via SYSENTER)**
+
+---
+
+## Section 1: Instruction Encoding Overview
+
+The Sirius NEXUS instruction set uses variable-length encoding that differs by core type. Math cores use 8-bit opcodes with 20-bit headers and support vector operands. Logic cores use 7-bit opcodes with 12-bit headers and support only scalar operands. System cores use 6-bit opcodes with 8-bit headers and support only the most frequently used operations.
+
+| Core Type | Opcode Bits | Header Bits | Max Operands | Avg Instruction Size | L1 I-cache Capacity |
+|-----------|-------------|-------------|--------------|---------------------|---------------------|
+| Math Core | 8 bits (0x00-0xFF) | 20 bits | 8 | 48 bits (6 bytes) | 5,461 instructions |
+| Logic Core | 7 bits (0x00-0x7F) | 12 bits | 4 | 32 bits (4 bytes) | 16,384 instructions |
+| System Core | 6 bits (0x00-0x3F) | 8 bits | 2 | 24 bits (3 bytes) | 10,922 instructions |
+
+**Common Header Format (Math Core - 20 bits)**
+- Bits 0-7: Opcode (8-bit operation code)
+- Bits 8-15: Flags (Vector mode, saturation, rounding, etc.)
+- Bits 16-19: Operand Count (Number of operands 0-15)
+
+**Common Header Format (Logic Core - 12 bits)**
+- Bits 0-6: Opcode (7-bit operation code)
+- Bits 7-9: Flags (Branch condition, etc.)
+- Bits 10-11: Operand Count (Number of operands 0-3)
+
+**Common Header Format (System Core - 8 bits)**
+- Bits 0-5: Opcode (6-bit operation code)
+- Bits 6-7: Flags (Special operation flags)
+
+**Operand Descriptor Format (16 bits - Math and Logic Cores)**
+- Bits 0-2: Type (0=register, 1=memory, 2=immediate, 3=remote, 4=vector)
+- Bits 3-5: Size (0=8-bit, 1=16-bit, 2=32-bit, 3=64-bit, 4=128-bit, 5=256-bit, 6=512-bit)
+- Bits 6-8: Behavior (0=input, 1=output, 2=input/output)
+- Bits 9-15: Value (Register number, address mode, or immediate indicator)
+
+**Operand Descriptor Format (8 bits - System Core)**
+- Bits 0-1: Type (0=register, 1=memory, 2=immediate)
+- Bits 2-4: Size (0=8-bit, 1=16-bit, 2=32-bit, 3=64-bit)
+- Bits 5-7: Register (Register number 0-7)
+
+**Register Names by Core Type**
+- Math Core: 64 vector registers (512-bit) V0-V63; 32 scalar registers (64-bit) R0-R31
+- Logic Core: 32 scalar registers (64-bit) R0-R31
+- System Core: 16 scalar registers (64-bit) R0-R15
+
+**Numerical Formats Supported**
+- INT4/UINT4 (4-bit), INT8/UINT8 (8-bit), INT16/UINT16 (16-bit), INT32/UINT32 (32-bit), INT64 (64-bit)
+- FP16 (half-precision), BF16 (brain float), FP32 (single-precision), FP64 (double-precision)
+- POSIT16, POSIT32 (Posit Type-III)
+
+---
+
+## Section 2: Data Movement Instructions
+
+### 2.1 MOV - Move Data
+
+**Description:** Copies data from source to destination without modifying the source. Supports register-to-register, memory-to-register, register-to-memory, and immediate-to-register transfers.
+
+**Math Core Encoding:** Opcode 0x01, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | Destination location |
+| Src | Register, Memory, or Immediate | 8-512 bits | Source location |
+
+**Logic Core Encoding:** Opcode 0x01 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x01 (6-bit), 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+MOV destination, source
+MOV.NT destination, source    ; Non-temporal (bypass cache)
+MOV.REMOTE @blade:addr, source ; Move to remote blade
+```
+
+**Examples:**
+```assembly
+; Register to register
+MOV R1, R2          ; Copy R2 to R1 (Math/Logic core)
+MOV V1, V2          ; Copy vector V2 to V1 (Math core only)
+
+; Immediate to register
+MOV R1, #42         ; Load 42 into R1
+MOV V1, #1.0        ; Load 1.0 into all elements of vector V1
+
+; Memory to register
+MOV R1, [R2]        ; Load from address in R2
+MOV R1, [R2 + 64]   ; Load from address R2 + 64
+MOV R1, [R2 + R3*8] ; Load from address R2 + R3*8
+
+; Register to memory
+MOV [R1], R2        ; Store R2 to address in R1
+MOV.NT [R1], R2     ; Non-temporal store (bypass cache)
+
+; Remote memory
+MOV R1, @4:0x10000  ; Load from blade 4, address 0x10000
+MOV @4:0x10000, R1  ; Store to blade 4, address 0x10000
+
+; Memory-mapped flash
+MOV R1, [0x100000000] ; Load from flash address
+```
+
+---
+
+### 2.2 MOVSX - Move with Sign Extension
+
+**Description:** Moves a smaller signed integer into a larger register, preserving the sign by replicating the most significant bit of the source across the upper bits of the destination.
+
+**Math Core Encoding:** Opcode 0x02, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 16-512 bits | Destination must be larger than source |
+| Src | Register, Memory, or Immediate | 8-128 bits | Source must be smaller than destination |
+
+**Logic Core Encoding:** Opcode 0x02 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Assembly Syntax:**
+```
+MOVSX destination, source
+MOVSX.S destination, source   ; Saturating sign extension
+```
+
+**Examples:**
+```assembly
+; Sign extend 8-bit to 32-bit
+MOVSX R1, R2        ; R2 contains 8-bit signed value, R1 gets sign-extended 32-bit
+
+; Sign extend from memory
+MOVSX R1, [R2]      ; Load byte from address R2, sign extend to 32-bit
+
+; Sign extend 16-bit to 64-bit
+MOVSX R1, R2        ; R2 contains 16-bit signed value, R1 gets sign-extended 64-bit
+
+; Saturating sign extension
+MOVSX.S R1, R2      ; Clamp to min/max if overflow would occur
+
+; Sign extend from immediate
+MOVSX R1, #-42      ; Sign extend immediate -42 to 32-bit
+```
+
+---
+
+### 2.3 MOVZX - Move with Zero Extension
+
+**Description:** Moves a smaller unsigned integer into a larger register, filling the upper bits with zeros.
+
+**Math Core Encoding:** Opcode 0x03, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 16-512 bits | Destination must be larger than source |
+| Src | Register, Memory, or Immediate | 8-128 bits | Source must be smaller than destination |
+
+**Logic Core Encoding:** Opcode 0x03 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Assembly Syntax:**
+```
+MOVZX destination, source
+```
+
+**Examples:**
+```assembly
+; Zero extend 8-bit to 32-bit
+MOVZX R1, R2        ; R2 contains 8-bit value, R1 gets zero-extended 32-bit
+
+; Zero extend from memory
+MOVZX R1, [R2]      ; Load byte from address R2, zero extend to 32-bit
+
+; Zero extend 16-bit to 64-bit
+MOVZX R1, R2        ; R2 contains 16-bit value, R1 gets zero-extended 64-bit
+
+; Zero extend from immediate
+MOVZX R1, #255      ; Zero extend immediate 255 to 32-bit
+```
+
+---
+
+### 2.4 LEA - Load Effective Address
+
+**Description:** Computes a memory address without accessing memory and stores the address in a register. Can perform addition and scaling in a single instruction.
+
+**Math Core Encoding:** Opcode 0x04, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 64-bit | Destination for computed address |
+| Src | Memory expression | N/A | Address expression (evaluated, not accessed) |
+
+**Logic Core Encoding:** Opcode 0x04 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x02 (6-bit), 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+LEA destination, [address expression]
+LEA destination, @blade:address   ; Remote address descriptor
+```
+
+**Examples:**
+```assembly
+; Simple address copy
+LEA R1, [R2]        ; R1 = R2
+
+; Add constant to register
+LEA R1, [R2 + 64]   ; R1 = R2 + 64
+
+; Add two registers
+LEA R1, [R2 + R3]   ; R1 = R2 + R3
+
+; Add with scaling (array indexing)
+LEA R1, [R2 + R3*8] ; R1 = R2 + (R3 * 8)
+
+; Three-operand addition
+LEA R1, [R2 + R3 + 64]  ; R1 = R2 + R3 + 64
+
+; Address of array element
+LEA R1, [array_base + R2*4]  ; R1 = array_base + (R2 * 4)
+
+; Remote address descriptor
+LEA R1, @4:0x10000  ; R1 = remote address descriptor for blade 4
+```
+
+---
+
+### 2.5 XCHG - Exchange Data
+
+**Description:** Atomically exchanges the contents of two operands. The exchange is indivisible with respect to other cores and DMA devices.
+
+**Math Core Encoding:** Opcode 0x05, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | First operand (receives second's value) |
+| Src | Register or Memory | 8-512 bits | Second operand (receives first's value) |
+
+**Logic Core Encoding:** Opcode 0x05 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x03 (6-bit), 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+XCHG operand1, operand2
+XCHG.A operand1, operand2    ; Acquire-release semantics
+XCHG.R operand1, operand2    ; Relaxed semantics
+XCHG.B operand1, operand2    ; Byte exchange (size override)
+```
+
+**Examples:**
+```assembly
+; Exchange register with memory (spinlock acquire)
+XCHG R1, [lock]     ; Atomically exchange R1 with lock variable
+
+; Exchange two registers
+XCHG R1, R2         ; Swap R1 and R2
+
+; Exchange with acquire-release semantics
+XCHG.A R1, [lock]   ; All previous memory ops complete before exchange
+
+; Byte exchange
+XCHG.B R1, [R2]     ; Exchange single byte
+
+; Double-word exchange
+XCHG R1, [R2]       ; Exchange 64-bit value
+
+; Remote memory exchange
+XCHG R1, @4:0x10000 ; Exchange with memory on blade 4
+```
+
+---
+
+## Section 3: Arithmetic Instructions
+
+### 3.1 ADD - Add Operands
+
+**Description:** Performs binary addition of two operands and stores the result in the destination. Supports scalar, vector, and saturating modes.
+
+**Math Core Encoding:** Opcode 0x10, 20-bit header, 2-3 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | Destination (receives sum) |
+| Src | Register, Memory, or Immediate | 8-512 bits | Source to add |
+| Optional Src2 | Register, Memory, or Immediate | 8-512 bits | Second source (vector mode) |
+
+**Logic Core Encoding:** Opcode 0x10 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x04 (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF (zero), SF (sign), CF (carry), OF (overflow)
+
+**Assembly Syntax:**
+```
+ADD dest, src
+ADD.V dest, src1, src2    ; Vector element-wise add
+ADD.S dest, src           ; Saturating add
+ADD.C dest, src           ; Add with carry (from previous operation)
+```
+
+**Examples:**
+```assembly
+; Simple integer addition
+ADD R1, R2          ; R1 = R1 + R2
+
+; Addition with immediate
+ADD R1, #42         ; R1 = R1 + 42
+
+; Addition from memory
+ADD R1, [R2]        ; R1 = R1 + value at address R2
+
+; Vector addition
+ADD.V V1, V2, V3    ; V1[i] = V2[i] + V3[i] for all i
+
+; Broadcast scalar to vector
+ADD.V V1, V2, #1    ; V1[i] = V2[i] + 1 for all i
+
+; Saturating addition (clamps on overflow)
+ADD.S R1, R2        ; R1 = saturate(R1 + R2)
+
+; Add with carry (multi-precision)
+ADD R1, R2          ; Add low 64 bits, sets carry flag
+ADD.C R3, R4        ; Add high 64 bits with carry
+
+; Remote memory addition
+ADD R1, @4:0x10000  ; R1 = R1 + value at remote address
+```
+
+---
+
+### 3.2 SUB - Subtract Operands
+
+**Description:** Performs binary subtraction (dest - src) and stores the result in the destination.
+
+**Math Core Encoding:** Opcode 0x11, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | Destination (receives difference) |
+| Src | Register, Memory, or Immediate | 8-512 bits | Source to subtract |
+
+**Logic Core Encoding:** Opcode 0x11 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x05 (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF (zero), SF (sign), CF (borrow), OF (overflow)
+
+**Assembly Syntax:**
+```
+SUB dest, src
+SUB.V dest, src1, src2    ; Vector element-wise subtract
+SUB.S dest, src           ; Saturating subtract
+SUB.C dest, src           ; Subtract with borrow
+```
+
+**Examples:**
+```assembly
+; Simple integer subtraction
+SUB R1, R2          ; R1 = R1 - R2
+
+; Subtraction with immediate
+SUB R1, #42         ; R1 = R1 - 42
+
+; Pointer subtraction (difference in bytes)
+SUB R1, R2          ; R1 = R1 - R2 (distance between pointers)
+
+; Vector subtraction (image differencing)
+SUB.V V1, V2, V3    ; V1[i] = V2[i] - V3[i]
+
+; Saturating subtraction (clamps on underflow)
+SUB.S R1, R2        ; R1 = saturate(R1 - R2)
+
+; Subtract with borrow (multi-precision)
+SUB R1, R2          ; Subtract low 64 bits, sets borrow flag
+SUB.C R3, R4        ; Subtract high 64 bits with borrow
+```
+
+---
+
+### 3.3 MUL - Multiply Unsigned
+
+**Description:** Performs unsigned multiplication of two operands. The product is stored in a destination that must be twice the width of the operands.
+
+**Math Core Encoding:** Opcode 0x12, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 2× operand width | Destination for product |
+| Src | Register, Memory, or Immediate | 8-256 bits | Multiplier |
+
+**Logic Core Encoding:** Opcode 0x12 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (zero), SF (sign of high word), CF (if product exceeds dest width)
+
+**Assembly Syntax:**
+```
+MUL dest, src
+MUL.V dest, src1, src2    ; Vector element-wise multiply
+```
+
+**Examples:**
+```assembly
+; Simple unsigned multiplication
+MUL R1, R2          ; R1 = R1 * R2 (unsigned)
+
+; Multiplication with immediate
+MUL R1, #10         ; R1 = R1 * 10
+
+; Multiplication with memory operand
+MUL R1, [R2]        ; R1 = R1 * value at address R2
+
+; Vector multiplication (element-wise)
+MUL.V V1, V2, V3    ; V1[i] = V2[i] * V3[i]
+
+; Square calculation
+MUL R1, R1          ; R1 = R1 * R1 (square)
+
+; Scaling for fixed-point arithmetic
+MUL R1, #65536      ; Scale by 2^16
+SHR R1, R1, #16     ; Extract high 16 bits
+
+; Remote multiplication
+MUL R1, @4:0x10000  ; R1 = R1 * remote value
+```
+
+---
+
+### 3.4 IMUL - Multiply Signed
+
+**Description:** Performs signed multiplication of two operands using two's complement arithmetic.
+
+**Math Core Encoding:** Opcode 0x13, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 2× operand width | Destination for product |
+| Src | Register, Memory, or Immediate | 8-256 bits | Multiplier (signed) |
+
+**Logic Core Encoding:** Opcode 0x13 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (zero), SF (sign of high word), CF (if product exceeds dest width), OF (signed overflow)
+
+**Assembly Syntax:**
+```
+IMUL dest, src
+IMUL.V dest, src1, src2   ; Vector element-wise signed multiply
+```
+
+**Examples:**
+```assembly
+; Simple signed multiplication
+IMUL R1, R2         ; R1 = R1 * R2 (signed)
+
+; Multiplication with negative immediate
+IMUL R1, #-10       ; R1 = R1 * (-10)
+
+; Vector signed multiplication
+IMUL.V V1, V2, V3   ; V1[i] = V2[i] * V3[i] (signed)
+```
+
+---
+
+### 3.5 DIV - Divide Unsigned
+
+**Description:** Performs unsigned division of a 64-bit dividend by a 32-bit divisor, producing a 32-bit quotient and a 32-bit remainder.
+
+**Math Core Encoding:** Opcode 0x14, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dividend | Register pair | 64-bit | High word in R1, low word in R0 |
+| Divisor | Register or Memory | 32-bit | Divisor |
+
+**Logic Core Encoding:** Opcode 0x14 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (zero quotient), CF (division by zero)
+
+**Assembly Syntax:**
+```
+DIV dividend_high, divisor    ; Quotient in dividend_high, remainder in R0
+```
+
+**Examples:**
+```assembly
+; Simple unsigned division
+DIV R1, R2          ; Divide (R1,R0) by R2, quotient in R1, remainder in R0
+
+; Division of 32-bit value
+MOVZX R1, R3        ; Zero-extend 32-bit to 64-bit in (R1,R0)
+DIV R1, R2          ; Divide by 32-bit divisor
+
+; Division with memory operand
+DIV R1, [R2]        ; Divide by divisor at address R2
+
+; Check divisibility
+DIV R1, R2          ; Divide
+CMP R0, #0          ; Check remainder
+BRANCH EQ, divisible ; Branch if remainder is zero
+
+; Convert seconds to minutes and seconds
+MOV R1, seconds     ; Dividend in (R1,R0)
+MOV R2, #60         ; Divisor = 60
+DIV R1, R2          ; Quotient = minutes, remainder = seconds
+```
+
+---
+
+### 3.6 IDIV - Divide Signed
+
+**Description:** Performs signed division using two's complement arithmetic.
+
+**Math Core Encoding:** Opcode 0x15, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x15 (7-bit), 12-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+IDIV dividend_high, divisor   ; Quotient in dividend_high, remainder in R0
+```
+
+**Examples:**
+```assembly
+; Signed division
+IDIV R1, R2         ; Divide signed (R1,R0) by signed R2
+
+; Check for negative remainder
+IDIV R1, R2
+CMP R0, #0
+BRANCH LT, negative_remainder
+```
+
+---
+
+### 3.7 INC - Increment
+
+**Description:** Increments the operand by one.
+
+**Math Core Encoding:** Opcode 0x16, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x16 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Opcode 0x06 (6-bit), 8-bit header, 1 operand descriptor
+
+**Flags Updated:** ZF, SF, OF (carry flag unchanged)
+
+**Assembly Syntax:**
+```
+INC operand
+```
+
+**Examples:**
+```assembly
+; Increment register
+INC R1              ; R1 = R1 + 1
+
+; Increment memory
+INC [R1]            ; Increment value at address R1
+
+; Loop counter
+MOV R1, #0
+loop:
+    INC R1
+    CMP R1, #100
+    BRANCH LT, loop
+```
+
+---
+
+### 3.8 DEC - Decrement
+
+**Description:** Decrements the operand by one.
+
+**Math Core Encoding:** Opcode 0x17, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x17 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Opcode 0x07 (6-bit), 8-bit header, 1 operand descriptor
+
+**Flags Updated:** ZF, SF, OF (carry flag unchanged)
+
+**Assembly Syntax:**
+```
+DEC operand
+```
+
+**Examples:**
+```assembly
+; Decrement register
+DEC R1              ; R1 = R1 - 1
+
+; Decrement memory
+DEC [R1]            ; Decrement value at address R1
+
+; Loop counter (count down)
+MOV R1, #100
+loop:
+    DEC R1
+    BRANCH NE, loop
+```
+
+---
+
+### 3.9 FMA - Fused Multiply-Add
+
+**Description:** Performs fused multiply-add: dest = (a × b) + c with a single rounding. This is more accurate than separate multiply and add instructions.
+
+**Math Core Encoding:** Opcode 0x18, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 16-512 bits | Destination for result |
+| A | Register, Memory, or Immediate | 16-512 bits | Multiplier |
+| B | Register, Memory, or Immediate | 16-512 bits | Multiplicand |
+| C | Register, Memory, or Immediate | 16-512 bits | Addend |
+
+**Logic Core Encoding:** Not available
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF, OF
+
+**Assembly Syntax:**
+```
+FMA dest, a, b, c
+FMA.V dest, a, b, c    ; Vector element-wise FMA
+FMA.RZ dest, a, b, c   ; Round toward zero
+FMA.RU dest, a, b, c   ; Round up
+FMA.RD dest, a, b, c   ; Round down
+```
+
+**Examples:**
+```assembly
+; Simple FMA
+FMA R1, R2, R3, R4   ; R1 = (R2 * R3) + R4
+
+; FMA with immediate addend
+FMA R1, R2, R3, #1.0 ; R1 = (R2 * R3) + 1.0
+
+; Dot product using FMA in a loop
+MOV R1, #0           ; Initialize accumulator
+MOV R2, #0           ; Initialize index
+loop:
+    FMA R1, [R3+R2], [R4+R2], R1   ; accumulator += a[i] * b[i]
+    ADD R2, #8
+    CMP R2, #size
+    BRANCH LT, loop
+
+; Polynomial evaluation (Horner's method)
+FMA R1, x, a, b      ; R1 = a*x + b
+FMA R1, R1, x, c     ; R1 = (a*x + b)*x + c
+FMA R1, R1, x, d     ; R1 = (a*x^2 + b*x + c)*x + d
+
+; Vector FMA for neural network layer
+FMA.V V1, V2, V3, V4 ; V1[i] = (V2[i] * V3[i]) + V4[i] for all i
+
+; Complex multiplication using FMA
+; Multiply (a + i*b) by (c + i*d) = (a*c - b*d) + i*(a*d + b*c)
+FMA real, a, c, neg_b_d    ; real = a*c + (-b*d)
+FMA imag, a, d, b_c        ; imag = a*d + b*c
+```
+
+---
+
+## Section 4: Logic and Bit Instructions
+
+### 4.1 AND - Bitwise Logical AND
+
+**Description:** Performs bitwise AND between two operands. Each result bit is 1 only if both corresponding source bits are 1.
+
+**Math Core Encoding:** Opcode 0x20, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x20 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x08 (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+AND dest, src
+AND.V dest, src1, src2    ; Vector element-wise AND
+```
+
+**Examples:**
+```assembly
+; Simple bitwise AND
+AND R1, R2          ; R1 = R1 & R2
+
+; Masking with immediate (keep low 8 bits)
+AND R1, #0xFF       ; R1 = R1 & 0xFF
+
+; Clearing specific bits
+AND R1, #0xFFFFFF00 ; Clear low 8 bits of R1
+
+; Test if value is zero (without modifying)
+AND R1, R1          ; Sets flags, R1 unchanged
+
+; Aligning memory addresses to 16-byte boundary
+AND R1, #0xFFFFFFF0 ; Round down to multiple of 16
+
+; Vector bitwise AND
+AND.V V1, V2, V3    ; V1[i] = V2[i] & V3[i] for all i
+```
+
+---
+
+### 4.2 OR - Bitwise Logical OR
+
+**Description:** Performs bitwise OR between two operands. Each result bit is 1 if at least one corresponding source bit is 1.
+
+**Math Core Encoding:** Opcode 0x21, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x21 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x09 (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+OR dest, src
+OR.V dest, src1, src2     ; Vector element-wise OR
+```
+
+**Examples:**
+```assembly
+; Simple bitwise OR
+OR R1, R2           ; R1 = R1 | R2
+
+; Setting specific bits (set low 4 bits to 1)
+OR R1, #0x0F        ; R1 = R1 | 0x0F
+
+; Combining flag registers
+OR R1, R2           ; Combine error flags
+
+; Convert binary digit to ASCII
+OR R1, #0x30        ; Convert 0-9 to '0'-'9'
+
+; Force value to be odd
+OR R1, #1           ; R1 = R1 | 1 (set low bit)
+
+; Vector bitwise OR
+OR.V V1, V2, V3     ; V1[i] = V2[i] | V3[i] for all i
+```
+
+---
+
+### 4.3 XOR - Bitwise Exclusive OR
+
+**Description:** Performs bitwise XOR between two operands. Each result bit is 1 if the corresponding source bits are different.
+
+**Math Core Encoding:** Opcode 0x22, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x22 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Opcode 0x0A (6-bit), 8-bit header, 2 operand descriptors
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+XOR dest, src
+XOR.V dest, src1, src2    ; Vector element-wise XOR
+```
+
+**Examples:**
+```assembly
+; Simple bitwise XOR
+XOR R1, R2          ; R1 = R1 ^ R2
+
+; Zero a register (fastest method)
+XOR R1, R1          ; R1 = 0
+
+; Toggle specific bits
+XOR R1, #0x0F       ; Toggle low 4 bits of R1
+
+; Simple XOR encryption/decryption
+XOR R1, key         ; Encrypt
+; ... later ...
+XOR R1, key         ; Decrypt back to original
+
+; Swap registers without temporary
+XOR R1, R2          ; R1 = R1 ^ R2
+XOR R2, R1          ; R2 = R2 ^ R1 (now R2 holds original R1)
+XOR R1, R2          ; R1 = R1 ^ R2 (now R1 holds original R2)
+
+; Check if two values are equal
+XOR R1, R2
+BRANCH EQ, equal    ; Branch if R1 == R2
+
+; Gray code conversion
+; gray = binary ^ (binary >> 1)
+MOV R2, R1
+SHR R2, R2, #1
+XOR R1, R2          ; R1 now contains Gray code
+```
+
+---
+
+### 4.4 NOT - Bitwise Logical NOT
+
+**Description:** Performs bitwise NOT (one's complement) on a single operand, inverting every bit.
+
+**Math Core Encoding:** Opcode 0x23, 20-bit header, 1 operand descriptor
+
+**Logic Core Encoding:** Opcode 0x23 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+NOT operand
+NOT.V dest, src         ; Vector element-wise NOT
+```
+
+**Examples:**
+```assembly
+; Simple bitwise NOT
+NOT R1              ; R1 = ~R1
+
+; Two's complement negation
+NOT R1
+ADD R1, #1          ; R1 = -R1 (two's complement)
+
+; Create mask of all ones
+XOR R1, R1          ; R1 = 0
+NOT R1              ; R1 = all ones
+
+; Invert vector element-wise
+NOT.V V1, V2        ; V1[i] = ~V2[i] for all i
+
+; Compute NAND (NOT AND)
+AND R1, R2
+NOT R1              ; R1 = ~(R1 & R2)
+```
+
+---
+
+### 4.5 TEST - Test Bits
+
+**Description:** Performs bitwise AND between two operands but does not store the result; only updates condition flags.
+
+**Math Core Encoding:** Opcode 0x24, 20-bit header, 2 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x24 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF (CF and OF cleared)
+
+**Assembly Syntax:**
+```
+TEST operand1, operand2
+```
+
+**Examples:**
+```assembly
+; Test a single bit
+TEST R1, #0x04      ; Test bit 2 of R1
+BRANCH NE, bit_set   ; Branch if bit is set
+
+; Test multiple bits (any set)
+TEST R1, #0x0F      ; Test low 4 bits
+BRANCH Z, none_set   ; Branch if none are set
+
+; Test sign bit
+TEST R1, #0x80000000 ; Test most significant bit
+BRANCH NE, negative  ; Branch if negative
+
+; Test for even/odd
+TEST R1, #1         ; Test low bit
+BRANCH Z, even      ; Branch if even
+
+; Test memory value
+TEST [R1], #0x80    ; Test high bit of byte at address R1
+BRANCH NE, high_bit_set
+
+; Test using register mask
+TEST R1, R2         ; Test bits in R1 specified by mask in R2
+BRANCH Z, no_bits_set
+```
+
+---
+
+### 4.6 BSF - Bit Scan Forward
+
+**Description:** Finds the index of the least significant set bit (lowest bit position containing a 1).
+
+**Math Core Encoding:** Opcode 0x30, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 64-bit | Receives bit index (0 = LSB) |
+| Src | Register or Memory | 16-512 bits | Value to scan |
+
+**Logic Core Encoding:** Opcode 0x30 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (set if source is zero)
+
+**Assembly Syntax:**
+```
+BSF destination, source
+BSF.P1 destination, source   ; Return index + 1
+```
+
+**Examples:**
+```assembly
+; Find lowest set bit
+BSF R1, R2          ; R1 = index of lowest set bit in R2
+BRANCH Z, no_bits   ; Branch if R2 was zero
+
+; Iterate over set bits
+loop:
+    BSF R1, R2
+    BRANCH Z, done
+    ; Process bit at position R1
+    XOR R2, #1<<R1  ; Clear that bit
+    JMP loop
+
+; Count trailing zeros (ctz) - same as BSF
+BSF R1, R2          ; R1 = number of trailing zeros
+
+; Find first free bit in bitmap
+BSF R1, [bitmap]    ; Find first free bit (if 0=free, 1=allocated)
+```
+
+---
+
+### 4.7 BSR - Bit Scan Reverse
+
+**Description:** Finds the index of the most significant set bit (highest bit position containing a 1).
+
+**Math Core Encoding:** Opcode 0x31, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 64-bit | Receives bit index |
+| Src | Register or Memory | 16-512 bits | Value to scan |
+
+**Logic Core Encoding:** Opcode 0x31 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF (set if source is zero)
+
+**Assembly Syntax:**
+```
+BSR destination, source
+```
+
+**Examples:**
+```assembly
+; Find highest set bit
+BSR R1, R2          ; R1 = index of highest set bit in R2
+
+; Compute floor of binary logarithm (log2)
+BSR R1, R2          ; R1 = floor(log2(R2))
+
+; Find next power of two
+BSR R1, R2
+ADD R1, #1
+MOV R3, #1
+SHL R3, R3, R1      ; R3 = 2^(floor(log2(R2))+1)
+
+; Normalize floating-point mantissa
+BSR R1, R2          ; Find highest set bit in mantissa
+SUB R1, #23         ; Subtract mantissa width
+SHL R2, R2, R1      ; Shift to normalize
+
+; Count leading zeros
+BSR R1, R2
+SUB R1, #31, R1     ; Leading zeros = 31 - floor(log2(R2))
+```
+
+---
+
+### 4.8 SHL - Shift Left
+
+**Description:** Shifts bits left; zeros are shifted into LSB positions.
+
+**Math Core Encoding:** Opcode 0x36, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | Value to shift |
+| Count | Register or Immediate | 8 bits | Shift amount (0-63 for 64-bit, 0-511 for 512-bit) |
+
+**Logic Core Encoding:** Opcode 0x36 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF, CF (last bit shifted out), OF
+
+**Assembly Syntax:**
+```
+SHL dest, count
+SHL.V dest, src, count    ; Vector shift left
+SHL.S dest, count         ; Saturating shift left
+```
+
+**Examples:**
+```assembly
+; Simple shift left (multiply by power of two)
+SHL R1, #3          ; R1 = R1 << 3 = R1 * 8
+
+; Shift left by variable amount
+SHL R1, R2          ; R1 = R1 << (R2 & 0x3F)
+
+; Extract bit field (shift to top, then shift back)
+SHL R1, #16         ; Shift field to top
+SHR R1, #16         ; Shift back to bottom
+
+; Build value from fields
+SHL R1, #16         ; Shift field 1 to high word
+OR R1, R2           ; OR in field 2 (low word)
+
+; Vector shift left
+SHL.V V1, V2, #2    ; Each element of V1 = element of V2 << 2
+
+; Power-of-two multiplication (much faster than MUL)
+SHL R1, #10         ; R1 = R1 * 1024
+
+; Shift left with carry detection
+SHL R1, #1
+BRANCH CS, overflow ; Branch if high bit was set before shift
+```
+
+---
+
+### 4.9 SHR - Shift Right
+
+**Description:** Shifts bits right; zeros are shifted into MSB positions (logical shift).
+
+**Math Core Encoding:** Opcode 0x37, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register or Memory | 8-512 bits | Value to shift |
+| Count | Register or Immediate | 8 bits | Shift amount (0-63 for 64-bit, 0-511 for 512-bit) |
+
+**Logic Core Encoding:** Opcode 0x37 (7-bit), 12-bit header, 2 operand descriptors
+
+**System Core Encoding:** Not available
+
+**Flags Updated:** ZF, SF (cleared), CF (last bit shifted out)
+
+**Assembly Syntax:**
+```
+SHR dest, count
+SHR.V dest, src, count    ; Vector shift right
+```
+
+**Examples:**
+```assembly
+; Simple shift right (unsigned division by power of two)
+SHR R1, #3          ; R1 = R1 >> 3 = R1 / 8 (unsigned)
+
+; Extract high 16 bits
+SHR R1, #16         ; Shift high bits to low position
+
+; Unsigned division by power of two
+SHR R1, #10         ; R1 = R1 / 1024 (unsigned)
+
+; Align pointer to cache line (round down)
+SHR R1, #6          ; Divide by 64
+SHL R1, #6          ; Multiply by 64
+
+; Vector shift right
+SHR.V V1, V2, #2    ; Each element of V1 = element of V2 >> 2
+
+; Extract bit field from the right
+SHR R1, #3          ; Shift field to low bits
+AND R1, #0x1F       ; Mask to 5 bits
+
+; Convert fixed-point to integer (discard fractional part)
+SHR R1, #16         ; R1 = R1 / 65536 (integer part only)
+
+; Shift right with carry detection (test low bit)
+SHR R1, #1
+BRANCH CS, odd      ; Branch if low bit was set
+```
+
+---
+
+## Section 5: Control Flow Instructions
+
+### 5.1 JMP - Unconditional Jump
+
+**Description:** Transfers execution control to a specified address unconditionally.
+
+**Math Core Encoding:** Opcode 0x40, 20-bit header, 1 operand descriptor
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Target | Immediate, Register, or Memory | 64-bit | Destination address |
+
+**Logic Core Encoding:** Opcode 0x40 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Opcode 0x10 (6-bit), 8-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+JMP target
+JMP.S target        ; Short jump (8-bit offset)
+JMP.N target        ; Near jump (32-bit offset)
+JMP.FAR segment:offset ; Far jump (segment change)
+JMP R1              ; Jump through register
+JMP [R1]            ; Jump through memory
+JMP @4:0x10000      ; Remote jump to blade 4
+```
+
+**Examples:**
+```assembly
+; Direct jump to label
+JMP target_label
+
+; Infinite loop
+loop:
+    JMP loop
+
+; Jump through register (function pointer)
+JMP R1              ; Jump to address in R1
+
+; Jump through memory (virtual function table)
+JMP [R1]            ; Load target from memory at R1, then jump
+
+; Short jump (2 bytes, limited range)
+JMP.S short_target
+
+; Far jump to different code segment
+JMP.FAR 0x08:0x10000
+
+; Remote jump
+JMP @4:0x10000      ; Jump to code on blade 4
+```
+
+---
+
+### 5.2 CALL - Call Subroutine
+
+**Description:** Transfers control to a subroutine while saving the return address on the hardware return stack.
+
+**Math Core Encoding:** Opcode 0x41, 20-bit header, 1 operand descriptor
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Target | Immediate, Register, or Memory | 64-bit | Subroutine address |
+
+**Logic Core Encoding:** Opcode 0x41 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Opcode 0x11 (6-bit), 8-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+CALL target
+CALL R1             ; Call through register
+CALL [R1]           ; Call through memory
+CALL.FAR segment:offset ; Far call
+CALL @4:0x10000     ; Remote call
+```
+
+**Examples:**
+```assembly
+; Simple subroutine call
+CALL subroutine
+; Returns here after subroutine completes
+
+; Call through register (function pointer)
+CALL R1             ; Call function at address in R1
+
+; Call through memory (virtual function)
+CALL [R1]           ; Load address from memory at R1, then call
+
+; Nested calls (return stack handles them)
+CALL outer
+; ... returns here after outer and inner complete
+outer:
+    CALL inner
+    RET
+inner:
+    RET
+
+; Tail call optimization (replace CALL+RET with JMP)
+; Instead of:
+CALL subroutine
+RET
+; Use:
+JMP subroutine
+
+; Remote procedure call
+CALL @4:0x10000     ; Call function on blade 4
+```
+
+---
+
+### 5.3 RET - Return from Subroutine
+
+**Description:** Returns control from a subroutine by popping the return address from the hardware return stack.
+
+**Math Core Encoding:** Opcode 0x42, 20-bit header, 0 operand descriptors
+
+**Logic Core Encoding:** Opcode 0x42 (7-bit), 12-bit header, 0 operand descriptors
+
+**System Core Encoding:** Opcode 0x12 (6-bit), 8-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+RET
+RET.FAR             ; Far return (segment change)
+RET #8              ; Return and pop 8 bytes from stack
+RET.I               ; Return from interrupt
+```
+
+**Examples:**
+```assembly
+; Simple return
+subroutine:
+    ; ... do work ...
+    RET
+
+; Far return (kernel to user)
+kernel_entry:
+    ; ... kernel code ...
+    RET.FAR
+
+; Return with argument cleanup (callee cleans stack)
+subroutine:
+    ; ... uses 8 bytes of stack arguments ...
+    RET #8          ; Return and pop 8 argument bytes
+
+; Return from interrupt handler
+interrupt_handler:
+    ; ... save context, handle interrupt, restore context ...
+    RET.I           ; Restores saved flags
+
+; Leaf function return (no nested calls)
+leaf_function:
+    ADD R1, R1, #1
+    RET
+```
+
+---
+
+### 5.4 BRANCH - Conditional Branch
+
+**Description:** Transfers control to a target address if a specified condition is true based on the condition flags.
+
+**Math Core Encoding:** Opcode 0x43, 20-bit header, 1 operand descriptor
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Target | Immediate | 16-64 bits | Branch destination |
+
+**Logic Core Encoding:** Opcode 0x43 (7-bit), 12-bit header, 1 operand descriptor
+
+**System Core Encoding:** Not available
+
+**Condition Codes:**
+
+| Code | Mnemonic | Condition | Flags Tested |
+|------|----------|-----------|--------------|
+| 0x0 | EQ | Equal | ZF = 1 |
+| 0x1 | NE | Not equal | ZF = 0 |
+| 0x2 | LT | Signed less than | SF != OF |
+| 0x3 | LE | Signed less or equal | ZF = 1 or SF != OF |
+| 0x4 | GT | Signed greater than | ZF = 0 and SF = OF |
+| 0x5 | GE | Signed greater or equal | SF = OF |
+| 0x6 | LO | Unsigned lower | CF = 1 |
+| 0x7 | LS | Unsigned lower or same | CF = 1 or ZF = 1 |
+| 0x8 | HI | Unsigned higher | CF = 0 and ZF = 0 |
+| 0x9 | HS | Unsigned higher or same | CF = 0 |
+| 0xA | CS | Carry set | CF = 1 |
+| 0xB | CC | Carry clear | CF = 0 |
+| 0xC | VS | Overflow set | OF = 1 |
+| 0xD | VC | Overflow clear | OF = 0 |
+| 0xE | MI | Negative (minus) | SF = 1 |
+| 0xF | PL | Positive or zero (plus) | SF = 0 |
+
+**Assembly Syntax:**
+```
+BRANCH condition, target
+BRANCH.PT condition, target  ; Predict taken
+BRANCH.PN condition, target  ; Predict not taken
+```
+
+**Examples:**
+```assembly
+; Branch if equal
+CMP R1, R2
+BRANCH EQ, equal_label
+
+; Branch if greater than (signed)
+CMP R1, R2
+BRANCH GT, greater_label
+
+; Branch if less than (unsigned)
+CMP R1, R2
+BRANCH LO, lower_label
+
+; Loop with conditional branch
+MOV R1, #0
+loop:
+    ADD R1, #1
+    CMP R1, #100
+    BRANCH LT, loop
+
+; If-then-else structure
+CMP R1, R2
+BRANCH EQ, then_case
+else_case:
+    ; ... else code ...
+    JMP end_if
+then_case:
+    ; ... then code ...
+end_if:
+
+; Short-circuit evaluation
+CMP R1, #0
+BRANCH EQ, short_circuit
+CMP R2, #0
+BRANCH EQ, short_circuit
+; both non-zero
+
+; Branch with prediction hints
+BRANCH.PT EQ, likely_taken   ; Hint: predict taken
+BRANCH.PN EQ, unlikely_taken ; Hint: predict not taken
+```
+
+---
+
+## Section 6: Vector and SIMD Instructions
+
+### 6.1 ADDPS - Add Packed Single-Precision
+
+**Description:** Performs element-wise addition of packed single-precision floating-point values.
+
+**Math Core Encoding:** Opcode 0x50, 20-bit header, 3 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Vector register | 128-1024 bits | Destination for results |
+| Src1 | Vector register or memory | 128-1024 bits | First source vector |
+| Src2 | Vector register or memory | 128-1024 bits | Second source vector |
+
+**Flags:** Vector length encoded in bits 8-9 (0=128-bit,1=256-bit,2=512-bit,3=1024-bit)
+
+**Assembly Syntax:**
+```
+ADDPS dest, src1, src2
+ADDPS.Y dest, src1, src2   ; 256-bit (8 floats)
+ADDPS.Z dest, src1, src2   ; 512-bit (16 floats)
+ADDPS.K dest, src1, src2, mask ; Masked addition
+```
+
+**Examples:**
+```assembly
+; Add two 128-bit vectors (4 floats)
+ADDPS XMM1, XMM2, XMM3   ; XMM1 = XMM2 + XMM3
+
+; Add 256-bit vectors (8 floats)
+ADDPS.Y YMM1, YMM2, YMM3
+
+; Add 512-bit vectors (16 floats)
+ADDPS.Z ZMM1, ZMM2, ZMM3
+
+; Add vector from memory
+ADDPS XMM1, XMM2, [R1]   ; XMM1 = XMM2 + memory at R1
+
+; Add broadcast scalar to vector
+ADDPS XMM1, XMM2, XMM3_S ; Broadcast XMM3[0] to all lanes
+
+; Masked vector addition (mask in K1 register)
+ADDPS.K ZMM1, ZMM2, ZMM3, K1
+```
+
+---
+
+### 6.2 MULPS - Multiply Packed Single-Precision
+
+**Description:** Performs element-wise multiplication of packed single-precision floating-point values.
+
+**Math Core Encoding:** Opcode 0x51, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+MULPS dest, src1, src2
+MULPS.Y dest, src1, src2   ; 256-bit
+MULPS.Z dest, src1, src2   ; 512-bit
+MULPS.K dest, src1, src2, mask ; Masked
+```
+
+**Examples:**
+```assembly
+; Multiply two 128-bit vectors
+MULPS XMM1, XMM2, XMM3   ; XMM1 = XMM2 * XMM3
+
+; Scale vector by scalar
+MULPS XMM1, XMM2, XMM3_S ; XMM1 = XMM2 * XMM3[0]
+
+; Square vector elements
+MULPS XMM1, XMM2, XMM2   ; XMM1 = XMM2 * XMM2 (squares)
+
+; 4x4 matrix multiplication row by vector
+MULPS XMM5, YMM0, XMM4_S ; Row0 * vector (broadcast)
+HADDPS XMM5, XMM5, XMM5  ; Horizontal sum
+
+; Vector multiplication with memory operand
+MULPS XMM1, XMM2, [R1]   ; XMM1 = XMM2 * memory at R1
+```
+
+---
+
+### 6.3 DOT - Vector Dot Product
+
+**Description:** Computes the dot product (scalar product) of two vectors.
+
+**Math Core Encoding:** Opcode 0x52, 20-bit header, 3 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Scalar register | 32-64 bits | Result of dot product |
+| Src1 | Vector register or memory | 128-1024 bits | First vector |
+| Src2 | Vector register or memory | 128-1024 bits | Second vector |
+
+**Assembly Syntax:**
+```
+DOT dest, src1, src2
+DOT.MP dest, src1, src2    ; Mixed precision (float multiply, double accumulate)
+```
+
+**Examples:**
+```assembly
+; Simple dot product of two 4-element vectors
+DOT R1, XMM2, XMM3     ; R1 = XMM2 · XMM3
+
+; Squared length of vector
+DOT R1, XMM2, XMM2     ; R1 = |XMM2|^2
+
+; Cosine similarity
+DOT R1, XMM2, XMM3     ; dot product
+SQRT R2, R2            ; length of first vector
+SQRT R3, R3            ; length of second vector
+MUL R4, R2, R3         ; product of lengths
+DIV R5, R1, R4         ; cosine = dot / (len1 * len2)
+
+; Mixed-precision dot product (reduces rounding error)
+DOT.MP R1, ZMM2, ZMM3
+
+; Convolution using sliding dot product
+DOT R1, XMM2, XMM3     ; kernel · input window
+
+; Attention mechanism dot product
+DOT R1, XMM_query, XMM_key   ; query · key
+```
+
+---
+
+### 6.4 CONV - 2D Convolution
+
+**Description:** Performs 2D convolution in constant time using a systolic array.
+
+**Math Core Encoding:** Opcode 0x53, 20-bit header, 5 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Output | Memory | Variable | Output buffer address |
+| Input | Memory | Variable | Input buffer address |
+| Kernel | Memory | Variable | Kernel buffer address |
+| Dimensions | Immediate | 32 bits | Height in bits 0-15, width in bits 16-31 |
+| Stride | Immediate | 16 bits | Vertical stride bits 0-7, horizontal bits 8-15 |
+
+**Flags:** Kernel size (bits 8-9: 0=3x3,1=5x5,2=7x7), Padding mode (bits 12-13: 0=valid,1=same,2=full,3=zero)
+
+**Assembly Syntax:**
+```
+CONV output, input, kernel, dimensions, stride
+CONV.K5 output, input, kernel, dims, stride   ; 5x5 kernel
+CONV.PAD_SAME output, input, kernel, dims, stride  ; Same padding
+CONV.DEPTH output, input, kernel, dims, stride ; Depthwise
+CONV.TRANS output, input, kernel, dims, stride ; Transposed
+```
+
+**Examples:**
+```assembly
+; 3x3 convolution on 224x224 image
+CONV R3, R1, R2, #0xE0E0, #1   ; 224=0xE0, stride=1
+
+; Same padding (output same size as input)
+CONV.PAD_SAME R3, R1, R2, #0xE0E0, #1
+
+; 5x5 convolution with stride 2
+CONV.K5 R3, R1, R2, #0xE0E0, #0x0202
+
+; Depthwise convolution (each channel has own kernel)
+CONV.DEPTH R3, R1, R2, dimensions, stride
+
+; 1x1 convolution (pointwise)
+CONV.K1 R3, R1, R2, dimensions, #1
+
+; 8-bit integer convolution (quantized networks)
+CONV.I8 R3, R1, R2, dimensions, stride
+
+; Transposed convolution (upsampling)
+CONV.TRANS R3, R1, R2, dimensions, stride
+
+; Dilated convolution with dilation rate 2
+CONV.DILATE R3, R1, R2, dimensions, #0x0202, #2
+```
+
+---
+
+### 6.5 SHUFPS - Shuffle Packed Single-Precision
+
+**Description:** Reorders elements within a vector by selecting elements from two source vectors.
+
+**Math Core Encoding:** Opcode 0x54, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Vector register | 128-512 bits | Destination for shuffled result |
+| Src1 | Vector register | 128-512 bits | First source vector |
+| Src2 | Vector register | 128-512 bits | Second source vector |
+| Mask | Immediate | 8 bits | Shuffle pattern (2 bits per element) |
+
+**Assembly Syntax:**
+```
+SHUFPS dest, src1, src2, mask
+```
+
+**Examples:**
+```assembly
+; Basic shuffle of 4 elements
+SHUFPS XMM1, XMM2, XMM3, #0x1B
+; XMM1 = {XMM2[1], XMM2[0], XMM3[3], XMM3[2]}
+
+; Broadcast a single element to all positions
+SHUFPS XMM1, XMM2, XMM2, #0x00   ; Broadcast XMM2[0]
+
+; Reverse vector order
+SHUFPS XMM1, XMM2, XMM2, #0x1B   ; Reverse 4 elements
+
+; Interleave two vectors (for complex numbers)
+SHUFPS XMM1, XMM2, XMM3, #0x88   ; {r0,i0,r1,i1}
+
+; Unpack low and high halves
+UNPCKLPS XMM1, XMM2, XMM3   ; {XMM2[0],XMM3[0],XMM2[1],XMM3[1]}
+UNPCKHPS XMM1, XMM2, XMM3   ; {XMM2[2],XMM3[2],XMM2[3],XMM3[3]}
+
+; Extract and broadcast element 2
+SHUFPS XMM1, XMM2, XMM2, #0xAA   ; 0xAA = 10 10 10 10 (binary)
+```
+
+---
+
+## Section 7: Advanced Math Functions
+
+### 7.1 EXP - Exponential Function (e^x)
+
+**Description:** Computes the exponential function e raised to the power of the source operand using a minimax polynomial approximation with 14 terms, accurate to within 1 unit in the last place (ULP).
+
+**Math Core Encoding:** Opcode 0x80, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 32-64 bits | Result (e^src) |
+| Src | Register or Memory | 32-64 bits | Input value x |
+
+**Flags:** Precision mode (bit 11: 0=full,1=reduced (10 ULP, 2x faster)), Vector mode (bit 8)
+
+**Assembly Syntax:**
+```
+EXP dest, src
+EXP.V dest, src     ; Vector exponential
+EXP.FAST dest, src  ; Reduced precision (10 ULP)
+```
+
+**Examples:**
+```assembly
+; Basic exponential
+EXP R1, R2          ; R1 = e^R2
+
+; Sigmoid function: σ(x) = 1 / (1 + e^(-x))
+NEG R2, R1          ; R2 = -x
+EXP R3, R2          ; R3 = e^(-x)
+ADD R3, #1.0        ; R3 = 1 + e^(-x)
+DIV R4, #1.0, R3    ; R4 = 1 / (1 + e^(-x))
+
+; Softmax (compute exponentials)
+EXP.V XMM1, XMM2    ; XMM1[i] = e^(XMM2[i]) for all i
+
+; Exponential moving average decay factor
+MOV R1, #-0.1
+EXP R2, R1          ; R2 = e^(-0.1) ≈ 0.9048
+
+; Gaussian function: a * e^(-(x-b)^2/(2c^2))
+SUB R2, R1, mean    ; x - μ
+MUL R2, R2, R2      ; (x-μ)^2
+MOV R3, #2.0
+MUL R3, variance, R3; 2σ^2
+DIV R4, R2, R3      ; -(x-μ)^2/(2σ^2) (negative)
+EXP R5, R4          ; e^(negative value)
+MUL R6, amplitude, R5; a * e^(...)
+
+; Fast exponential for inference
+EXP.FAST R1, R2     ; 10 ULP accuracy, 2x faster
+```
+
+---
+
+### 7.2 LOG - Natural Logarithm
+
+**Description:** Computes the natural logarithm of the source operand using a minimax polynomial of degree 12 for single-precision and 18 for double-precision.
+
+**Math Core Encoding:** Opcode 0x81, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 32-64 bits | Result ln(src) |
+| Src | Register or Memory | 32-64 bits | Input value (>0) |
+
+**Flags:** Precision mode (bit 11), Vector mode (bit 8)
+
+**Assembly Syntax:**
+```
+LOG dest, src
+LOG.V dest, src     ; Vector logarithm
+LOG.FAST dest, src  ; Reduced precision
+```
+
+**Examples:**
+```assembly
+; Basic natural logarithm
+LOG R1, R2          ; R1 = ln(R2)
+
+; Entropy calculation: H = -Σ p_i * log(p_i)
+LOG R2, R1          ; R2 = ln(p_i)
+MUL R3, R1, R2      ; p_i * ln(p_i)
+ADD entropy, entropy, R3
+; At end: H = -entropy
+
+; Log-likelihood for Gaussian
+MOV R1, variance
+MUL R1, R1, #2π     ; 2πσ^2
+LOG R2, R1          ; ln(2πσ^2)
+MUL R2, R2, #-0.5   ; -0.5 * ln(2πσ^2)
+
+; Information gain
+LOG R2, prob        ; ln(prob)
+MUL R2, prob, R2    ; prob * ln(prob)
+
+; Cross-entropy loss
+LOG R3, R2          ; R3 = ln(p_i)
+MUL R4, R1, R3      ; y_i * ln(p_i)
+ADD loss, loss, R4
+
+; Perplexity = e^(-(1/N) * Σ ln(p_i))
+LOG.V XMM2, XMM1    ; ln(p_i) for all i
+HADDPS XMM3, XMM2, XMM2  ; Sum
+DIV R4, R4, #N      ; Average
+NEG R5, R4          ; -average
+EXP R6, R5          ; exp(-average log) = perplexity
+```
+
+---
+
+### 7.3 SQRT - Square Root
+
+**Description:** Computes the square root of the source operand using fast Newton-Raphson iteration with a hardware seed.
+
+**Math Core Encoding:** Opcode 0x8A, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 32-64 bits | Result √src |
+| Src | Register or Memory | 32-64 bits | Input (≥0) |
+
+**Assembly Syntax:**
+```
+SQRT dest, src
+SQRT.V dest, src    ; Vector square root
+SQRT.FAST dest, src ; Reduced precision (2 ULP)
+```
+
+**Examples:**
+```assembly
+; Basic square root
+SQRT R1, R2         ; R1 = sqrt(R2)
+
+; Euclidean distance
+SUB R4, R1, R2      ; Δx
+SUB R5, R3, R4      ; Δy
+MUL R4, R4, R4      ; Δx^2
+MUL R5, R5, R5      ; Δy^2
+ADD R4, R4, R5      ; sum of squares
+SQRT R6, R4         ; distance
+
+; Standard deviation
+DIV R2, sum_sq_diff, N  ; variance
+SQRT R3, R2         ; standard deviation
+
+; Root mean square (RMS)
+DIV R2, sum_sq, N   ; mean square
+SQRT R3, R2         ; RMS
+
+; Vector normalization
+DOT R1, XMM2, XMM2  ; R1 = length^2
+SQRT R2, R1         ; R2 = length
+MULPS XMM3, XMM2, #1.0
+DIVPS XMM3, XMM3, R2_S  ; vector / length
+
+; Hypotenuse
+MUL R3, R1, R1      ; a^2
+MUL R4, R2, R2      ; b^2
+ADD R5, R3, R4      ; a^2 + b^2
+SQRT R6, R5         ; c = sqrt(a^2 + b^2)
+```
+
+---
+
+### 7.4 RSQRT - Reciprocal Square Root
+
+**Description:** Computes the reciprocal square root: 1/√(src). Faster than SQRT followed by division.
+
+**Math Core Encoding:** Opcode 0x8B, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Register | 32-64 bits | Result 1/√src |
+| Src | Register or Memory | 32-64 bits | Input (>0) |
+
+**Assembly Syntax:**
+```
+RSQRT dest, src
+RSQRT.V dest, src   ; Vector reciprocal square root
+RSQRT.FAST dest, src ; Reduced precision
+```
+
+**Examples:**
+```assembly
+; Basic reciprocal square root
+RSQRT R1, R2        ; R1 = 1 / sqrt(R2)
+
+; Vector normalization (optimized)
+DOT R1, XMM2, XMM2  ; R1 = length^2
+RSQRT R2, R1        ; R2 = 1 / length
+MULPS XMM3, XMM2, R2_S  ; vector / length
+
+; Lighting calculation (Phong reflection)
+RSQRT R3, R1        ; 1/|N|
+MULPS N, N, R3_S
+RSQRT R4, R2        ; 1/|L|
+MULPS L, L, R4_S
+DOT R5, N, L        ; diffuse lighting
+
+; Fast inverse square root (hardware accelerated)
+RSQRT R1, R2        ; Accurate, fixed latency
+
+; Coulomb's law force calculation
+MUL R3, R1, R1      ; r^2
+RSQRT R4, R3        ; 1/r
+MUL R5, R4, R4      ; 1/r^2
+MUL force, k, q1
+MUL force, force, q2
+MUL force, force, R5
+```
+
+---
+
+### 7.5 ERF - Error Function
+
+**Description:** Computes the error function, the integral of the Gaussian distribution. Output ranges from -1 to 1.
+
+**Math Core Encoding:** Opcode 0x8C, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+ERF dest, src
+ERF.V dest, src     ; Vector error function
+ERF.FAST dest, src  ; Reduced precision (5 ULP)
+```
+
+**Examples:**
+```assembly
+; Basic error function
+ERF R1, R2          ; R1 = erf(R2)
+
+; CDF of normal distribution: Φ(x) = 0.5 * (1 + erf(x / (σ√2)))
+MOV R2, #1.41421356 ; √2
+MUL R2, sigma, R2   ; σ√2
+DIV R3, x, R2       ; x / (σ√2)
+ERF R4, R3          ; erf(x/(σ√2))
+MUL R4, #0.5
+ADD R5, #0.5, R4    ; Φ(x)
+
+; Probability within range: P(a < X < b) = Φ(b) - Φ(a)
+SUB R4, cdf_b, cdf_a
+
+; Tail probability: P(|X| > t) = 1 - erf(t/√2)
+MOV R2, #1.41421356
+DIV R3, threshold, R2
+ERF R4, R3
+MOV R5, #1.0
+SUB R5, R5, R4
+
+; Heat diffusion: T = T0 * erf(x/(2√(αt)))
+MUL R3, alpha, time
+SQRT R4, R3
+MUL R4, #2.0
+DIV R5, x, R4
+ERF R6, R5
+MUL T, T0, R6
+
+; Gaussian integral: ∫₀ˣ e^{-t²} dt = (√π/2) * erf(x)
+MOV R3, #1.77245385 ; √π
+MUL R3, R3, #0.5    ; √π/2
+ERF R2, x
+MUL result, R3, R2
+```
+
+---
+
+### 7.6 GAMMA - Gamma Function
+
+**Description:** Computes the gamma function Γ(x), an extension of the factorial to real numbers.
+
+**Math Core Encoding:** Opcode 0x8E, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+GAMMA dest, src
+GAMMA.V dest, src   ; Vector gamma function
+```
+
+**Examples:**
+```assembly
+; Basic gamma function
+GAMMA R1, R2        ; R1 = Γ(R2)
+
+; Factorial: n! = Γ(n+1)
+MOV R1, #5
+GAMMA R2, R1        ; Γ(5) = 24
+
+; Beta function: B(a,b) = Γ(a)Γ(b)/Γ(a+b)
+GAMMA R1, a
+GAMMA R2, b
+ADD R3, a, b
+GAMMA R4, R3
+MUL R5, R1, R2
+DIV beta, R5, R4
+
+; Gamma for half-integers: Γ(1/2) = √π
+MOV R1, #0.5
+GAMMA R2, R1        ; R2 = √π ≈ 1.77245
+```
+
+---
+
+### 7.7 LGAMMA - Log Gamma Function
+
+**Description:** Computes the natural logarithm of the gamma function: ln(Γ(x)). Avoids overflow for large arguments.
+
+**Math Core Encoding:** Opcode 0x8F, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+LGAMMA dest, src
+LGAMMA.V dest, src  ; Vector log gamma
+```
+
+**Examples:**
+```assembly
+; Basic log gamma
+LGAMMA R1, R2       ; R1 = ln(Γ(R2))
+
+; Large factorial (stays in log space)
+MOV R1, #1000
+LGAMMA R2, R1       ; ln(1000!) without overflow
+
+; Beta function in log space
+LGAMMA R1, a
+LGAMMA R2, b
+ADD R3, a, b
+LGAMMA R4, R3
+ADD R5, R1, R2
+SUB log_beta, R5, R4
+```
+
+---
+
+## Section 8: INT4 Inference Instructions
+
+### 8.1 MATMULI4 - INT4 Matrix Multiplication
+
+**Description:** Performs matrix multiplication of two INT4 matrices, accumulating results in 32-bit integers.
+
+**Math Core Encoding:** Opcode 0x96, 20-bit header, 6 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Output | Memory | Variable | Output accumulator matrix |
+| A | Memory | Variable | First INT4 matrix |
+| B | Memory | Variable | Second INT4 matrix |
+| M | Immediate | 32 bits | Rows of A |
+| K | Immediate | 32 bits | Columns of A / rows of B |
+| N | Immediate | 32 bits | Columns of B |
+
+**Assembly Syntax:**
+```
+MATMULI4 output, A, B, M, K, N
+MATMULI4.T1 output, A, B, M, K, N   ; Transpose A
+MATMULI4.T2 output, A, B, M, K, N   ; Transpose B
+MATMULI4.R output, A, B, M, K, N, bias ; ReLU activation
+MATMULI4.G output, A, B, M, K, N, bias ; GELU activation
+```
+
+**Examples:**
+```assembly
+; Basic INT4 matrix multiplication (1024x1024)
+MATMULI4 C, A, B, #1024, #1024, #1024
+
+; With transpose
+MATMULI4.T1 C, A, B, #1024, #1024, #1024
+
+; With bias and ReLU activation
+MATMULI4.R C, A, B, #1024, #1024, #1024, bias
+
+; With GELU activation (transformer FFN)
+MATMULI4.G C, A, B, #1024, #1024, #1024, bias
+```
+
+---
+
+### 8.2 SOFTMAXI4 - INT4 Softmax
+
+**Description:** Computes softmax on INT4 logits using FP16 for intermediate computation.
+
+**Math Core Encoding:** Opcode 0x97, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Vector or Memory | Variable | Output probabilities (INT4) |
+| Src | Vector or Memory | Variable | Input logits (INT4) |
+
+**Assembly Syntax:**
+```
+SOFTMAXI4 dest, src
+SOFTMAXI4.T dest, src, temp   ; Temperature-scaled
+SOFTMAXI4.L dest, src         ; Log-softmax
+```
+
+**Examples:**
+```assembly
+; Softmax on INT4 logits
+SOFTMAXI4 V1, V2
+
+; Temperature-scaled softmax (T=0.7)
+SOFTMAXI4.T V1, V2, #0.7
+
+; Log-softmax (for cross-entropy loss)
+SOFTMAXI4.L V1, V2
+```
+
+---
+
+### 8.3 ATTENTIONI4 - INT4 Multi-Head Attention
+
+**Description:** Computes scaled dot-product attention entirely in INT4 with FP16 softmax.
+
+**Math Core Encoding:** Opcode 0x98, 20-bit header, 6 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Output | Memory | Variable | Output attention matrix |
+| Q | Memory | Variable | Query matrix (INT4) |
+| K | Memory | Variable | Key matrix (INT4) |
+| V | Memory | Variable | Value matrix (INT4) |
+| SeqLen | Immediate | 32 bits | Sequence length |
+| HeadDim | Immediate | 32 bits | Head dimension |
+
+**Assembly Syntax:**
+```
+ATTENTIONI4 output, Q, K, V, seq_len, head_dim
+ATTENTIONI4.C output, Q, K, V, seq_len, head_dim  ; Causal masking
+ATTENTIONI4.F output, Q, K, V, seq_len, head_dim  ; Flash attention
+```
+
+**Examples:**
+```assembly
+; Standard attention
+ATTENTIONI4 output, Q, K, V, #2048, #64
+
+; Causal masking (autoregressive)
+ATTENTIONI4.C output, Q, K, V, #2048, #64
+
+; Flash attention (memory-optimized)
+ATTENTIONI4.F output, Q, K, V, #2048, #64
+```
+
+---
+
+### 8.4 GELUI4 - INT4 GELU Activation
+
+**Description:** Computes GELU activation on INT4 values using a 16-entry lookup table.
+
+**Math Core Encoding:** Opcode 0x99, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+GELUI4 dest, src
+GELUI4.F dest, src   ; Fast approximate (2x speed, 2% accuracy loss)
+```
+
+**Examples:**
+```assembly
+; Apply GELU to INT4 vector
+GELUI4 V1, V2
+
+; Fast approximate GELU
+GELUI4.F V1, V2
+```
+
+---
+
+### 8.5 LAYERNORMI4 - INT4 Layer Normalization
+
+**Description:** Computes layer normalization on INT4 tensors.
+
+**Math Core Encoding:** Opcode 0x9A, 20-bit header, 3 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Output | Memory | Variable | Output tensor (INT4) |
+| Input | Memory | Variable | Input tensor (INT4) |
+| Params | Memory | 8 bytes | Scale and bias (FP16) |
+
+**Assembly Syntax:**
+```
+LAYERNORMI4 output, input, params
+```
+
+**Examples:**
+```assembly
+; Normalize INT4 vector
+LAYERNORMI4 output, input, params
+```
+
+---
+
+### 8.6 RESIDUALI4 - INT4 Residual Connection
+
+**Description:** Adds residual connection between two INT4 tensors using FP16 for addition.
+
+**Math Core Encoding:** Opcode 0x9B, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+RESIDUALI4 output, input, residual
+```
+
+**Examples:**
+```assembly
+; Residual connection: output = input + residual
+RESIDUALI4 output, input, residual
+```
+
+---
+
+### 8.7 MOVI4 - Move Packed INT4 Data
+
+**Description:** Moves packed INT4 data (4 values per 16-bit word) between registers and memory.
+
+**Math Core Encoding:** Opcode 0x90, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+MOVI4 dest, src
+MOVI4.NT dest, src  ; Non-temporal (bypass cache)
+MOVI4.Z dest, src   ; Zero-extend to 8-bit
+```
+
+**Examples:**
+```assembly
+; Load 16 INT4 values (8 bytes) into register
+MOVI4 R1, [R2]
+
+; Store 16 INT4 values to memory
+MOVI4 [R2], R1
+
+; Load and zero-extend to 8-bit
+MOVI4.Z V1, [R2]
+```
+
+---
+
+### 8.8 PACKI4 - Pack 8-bit to INT4
+
+**Description:** Packs 8-bit integers to 4-bit with saturation.
+
+**Math Core Encoding:** Opcode 0x91, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+PACKI4 dest, src
+PACKI4.S dest, src  ; Saturating (clamp to -8..7)
+PACKI4.R dest, src  ; Rounding
+```
+
+**Examples:**
+```assembly
+; Pack 16 8-bit values to 8 bytes INT4
+PACKI4 V2, V1
+
+; Pack with saturation
+PACKI4.S V2, V1
+```
+
+---
+
+### 8.9 UNPACKI4 - Unpack INT4 to 8-bit
+
+**Description:** Unpacks 4-bit integers to 8-bit with sign or zero extension.
+
+**Math Core Encoding:** Opcode 0x92, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+UNPACKI4 dest, src
+UNPACKI4.S dest, src  ; Sign extension
+UNPACKI4.Z dest, src  ; Zero extension
+```
+
+**Examples:**
+```assembly
+; Unpack with sign extension
+UNPACKI4.S V2, V1
+
+; Unpack with zero extension
+UNPACKI4.Z V2, V1
+```
+
+---
+
+### 8.10 ADDI4 - INT4 Vector Addition
+
+**Description:** INT4 vector addition with saturation.
+
+**Math Core Encoding:** Opcode 0x93, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+ADDI4 dest, src1, src2
+ADDI4.S dest, src1, src2  ; Saturating (explicit)
+```
+
+**Examples:**
+```assembly
+; Add two INT4 vectors
+ADDI4 V1, V2, V3
+```
+
+---
+
+### 8.11 MULI4 - INT4 Vector Multiplication
+
+**Description:** INT4 vector multiplication with saturation.
+
+**Math Core Encoding:** Opcode 0x94, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+MULI4 dest, src1, src2
+MULI4.R dest, src1, src2  ; Rounding
+```
+
+**Examples:**
+```assembly
+; Multiply two INT4 vectors
+MULI4 V1, V2, V3
+```
+
+---
+
+### 8.12 DOTI4 - INT4 Dot Product
+
+**Description:** INT4 dot product with 32-bit accumulation.
+
+**Math Core Encoding:** Opcode 0x95, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+DOTI4 dest, src1, src2
+DOTI4.A dest, src1, src2  ; Accumulate (add to existing)
+```
+
+**Examples:**
+```assembly
+; Compute dot product
+DOTI4 R1, V2, V3
+
+; Accumulate
+DOTI4.A R1, V2, V3
+```
+
+---
+
+## Section 9: Probabilistic Inference Instructions
+
+### 9.1 HMM_FORWARD - HMM Forward Algorithm
+
+**Description:** Computes one step of the forward algorithm for Hidden Markov Models.
+
+**Math Core Encoding:** Opcode 0xA0, 20-bit header, 5 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| New | Vector memory | N×4 bytes | New forward probabilities |
+| Old | Vector memory | N×4 bytes | Previous forward probabilities |
+| Trans | Memory | N×N×4 bytes | Transition matrix (row-major) |
+| Emiss | Vector memory | N×4 bytes | Emission probabilities |
+| Scale | Scalar memory | 4 bytes | Scaling factor output |
+
+**Assembly Syntax:**
+```
+HMM_FORWARD new, old, trans, emiss, scale
+HMM_FORWARD.LOG new, old, trans, emiss, scale  ; Log-space
+HMM_FORWARD.MP new, old, trans, emiss, scale   ; Mixed precision
+```
+
+**Examples:**
+```assembly
+; Single forward step for 256-state HMM
+HMM_FORWARD R5, R1, R2, R3, R4
+
+; Complete forward algorithm for sequence
+MOV R10, #0
+loop:
+    LEA R15, [R13 + R10*1024]
+    HMM_FORWARD R11, R11, R14, R15, [R12 + R10*4]
+    ADD R10, #1
+    CMP R10, #1000
+    BRANCH LT, loop
+
+; Log-space forward (numerically stable)
+HMM_FORWARD.LOG R5, R1, R2, R3, R4
+```
+
+---
+
+### 9.2 HMM_VITERBI - HMM Viterbi Algorithm
+
+**Description:** Computes one step of the Viterbi algorithm for finding the most probable state sequence.
+
+**Math Core Encoding:** Opcode 0xA1, 20-bit header, 5 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| New | Vector memory | N×4 bytes | New Viterbi probabilities |
+| Old | Vector memory | N×4 bytes | Previous Viterbi probabilities |
+| Trans | Memory | N×N×4 bytes | Transition matrix |
+| Emiss | Vector memory | N×4 bytes | Emission probabilities |
+| Back | Memory | N×4 bytes | Backpointer matrix output |
+
+**Assembly Syntax:**
+```
+HMM_VITERBI new, old, trans, emiss, back
+HMM_VITERBI.LOG new, old, trans, emiss, back  ; Log-space
+```
+
+**Examples:**
+```assembly
+; Single Viterbi step
+HMM_VITERBI R5, R1, R2, R3, R4
+
+; Complete Viterbi decoding
+loop:
+    LEA R15, [R13 + R10*1024]
+    LEA R16, [R12 + R10*1024]
+    HMM_VITERBI R11, R11, R14, R15, R16
+    ADD R10, #1
+    CMP R10, #1000
+    BRANCH LT, loop
+
+; Log-space Viterbi (most common)
+HMM_VITERBI.LOG R5, R1, R2, R3, R4
+```
+
+---
+
+### 9.3 HMM_BACKWARD - HMM Backward Algorithm
+
+**Description:** Computes one step of the backward algorithm for HMMs.
+
+**Math Core Encoding:** Opcode 0xA2, 20-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+HMM_BACKWARD new, old, trans, emiss
+HMM_BACKWARD.LOG new, old, trans, emiss  ; Log-space
+```
+
+**Examples:**
+```assembly
+; Single backward step
+HMM_BACKWARD R4, R1, R2, R3
+
+; Complete backward pass
+MOV R10, #999
+loop:
+    LEA R14, [R12 + R10*1024]
+    HMM_BACKWARD R11, R11, R13, R14
+    SUB R10, #1
+    CMP R10, #0
+    BRANCH GE, loop
+
+; Log-space backward
+HMM_BACKWARD.LOG R4, R1, R2, R3
+```
+
+---
+
+### 9.4 SOFTMAX - Softmax Function
+
+**Description:** Computes softmax over a vector of logits.
+
+**Math Core Encoding:** Opcode 0xA4, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Vector register | 128-1024 bits | Output probabilities |
+| Src | Vector register | 128-1024 bits | Input logits |
+
+**Assembly Syntax:**
+```
+SOFTMAX dest, src
+SOFTMAX.TEMP dest, src, temp  ; Temperature-scaled
+SOFTMAX.LOG dest, src         ; Log-softmax
+SOFTMAX.SPARSE dest, src, mask, k  ; Top-k sparse
+```
+
+**Examples:**
+```assembly
+; Basic softmax
+SOFTMAX ZMM1, ZMM2
+
+; Temperature-scaled softmax (T=0.1)
+SOFTMAX.TEMP ZMM1, ZMM2, #0.1
+
+; Log-softmax
+SOFTMAX.LOG ZMM1, ZMM2
+
+; Sparse softmax (top 8 elements only)
+SOFTMAX.SPARSE ZMM1, ZMM2, K1, #8
+```
+
+---
+
+### 9.5 LOG_SUM_EXP - Log of Sum of Exponentials
+
+**Description:** Computes log(Σ e^{x_i}) in a numerically stable way.
+
+**Math Core Encoding:** Opcode 0xA5, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Scalar register | 64-bit | Result |
+| Src | Vector register | 128-1024 bits | Input vector |
+
+**Assembly Syntax:**
+```
+LOG_SUM_EXP dest, src
+LOG_SUM_EXP.2 dest, a, b  ; Two-input log-add
+```
+
+**Examples:**
+```assembly
+; Basic log-sum-exp
+LOG_SUM_EXP R1, ZMM2
+
+; Log-add for two numbers
+LOG_SUM_EXP.2 R1, R2, R3
+
+; Normalization in log-space
+LOG_SUM_EXP R1, ZMM2
+SUB.V ZMM3, ZMM2, R1_S  ; Normalized log-probabilities
+
+; Log-space forward algorithm
+LOG_SUM_EXP R1, ZMM2
+ADD R2, R1, log_emiss
+```
+
+---
+
+### 9.6 SPARSE_DOT - Sparse Vector Dot Product
+
+**Description:** Computes dot product of dense and sparse vectors.
+
+**Math Core Encoding:** Opcode 0xA9, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Size | Description |
+|---------|------|------|-------------|
+| Dest | Scalar register | 64-bit | Result |
+| Dense | Memory | Variable | Dense vector base address |
+| Indices | Memory | Variable | Sparse index list (terminated by 0xFFFF) |
+| Values | Memory | Variable | Sparse value list (parallel to indices) |
+
+**Assembly Syntax:**
+```
+SPARSE_DOT dest, dense, indices, values
+SPARSE_DOT.I8 dest, dense, indices, values  ; 8-bit values
+SPARSE_DOT.STREAM dest, dense, indices, values  ; Streaming mode
+```
+
+**Examples:**
+```assembly
+; Basic sparse dot product
+SPARSE_DOT R1, R2, R3, R4
+
+; Sparse vector format in memory:
+; Indices: 0x0000, 0x0005, 0x0012, 0xFFFF
+; Values: 0.5, -0.3, 0.8, (any)
+
+; Recommendation system prediction
+SPARSE_DOT R1, user_vec, item_indices, item_values
+
+; Streaming mode for large sparse vectors
+SPARSE_DOT.STREAM R1, R2, R3, R4
+```
+
+---
+
+## Section 10: System Instructions
+
+### 10.1 SYSENTER - Enter Kernel Mode
+
+**Description:** Transfers control from user code to operating system kernel.
+
+**System Core Encoding:** Opcode 0x20 (6-bit), 8-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+SYSENTER
+SYSENTER.ASYNC   ; Asynchronous (returns immediately)
+SYSENTER.REMOTE  ; Execute on remote blade
+```
+
+**Examples:**
+```assembly
+; Standard system call
+MOV R1, #1
+MOV R2, fd
+MOV R3, buffer
+MOV R4, count
+SYSENTER
+
+; Asynchronous system call
+SYSENTER.ASYNC
+```
+
+---
+
+### 10.2 SYSEXIT - Exit Kernel Mode
+
+**Description:** Returns from kernel mode to user code.
+
+**System Core Encoding:** Opcode 0x21 (6-bit), 8-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+SYSEXIT
+SYSEXIT.SP        ; Return with modified stack pointer
+SYSEXIT.REMOTE    ; Return to remote blade
+```
+
+**Examples:**
+```assembly
+; Return from system call
+SYSEXIT
+
+; Return with new stack pointer
+SYSEXIT.SP
+```
+
+---
+
+### 10.3 IN - Input from Port
+
+**Description:** Reads a byte, word, or doubleword from an I/O port.
+
+**System Core Encoding:** Opcode 0x22 (6-bit), 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+IN dest, port
+IN.W dest, port    ; Word (16-bit)
+IN.D dest, port    ; Doubleword (32-bit)
+IN.S dest, port    ; String input (repeated)
+```
+
+**Examples:**
+```assembly
+; Read byte from keyboard controller
+IN R1, #0x60
+
+; Read word from COM1 serial port
+IN.W R1, #0x3F8
+
+; Read 32 bytes from port into buffer
+MOV R2, #32
+IN.S R1, #0x3F8
+```
+
+---
+
+### 10.4 OUT - Output to Port
+
+**Description:** Writes a byte, word, or doubleword to an I/O port.
+
+**System Core Encoding:** Opcode 0x23 (6-bit), 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+OUT port, src
+OUT.W port, src    ; Word (16-bit)
+OUT.D port, src    ; Doubleword (32-bit)
+OUT.S port, src    ; String output (repeated)
+```
+
+**Examples:**
+```assembly
+; Write byte to keyboard controller
+OUT #0x60, R1
+
+; Write word to COM1 serial port
+OUT.W #0x3F8, R1
+
+; Write 32 bytes from buffer to port
+OUT.S #0x3F8, R1
+```
+
+---
+
+### 10.5 CFG_VIDEO - Configure Video Output
+
+**Description:** Configures a video output tile.
+
+**System Core Encoding:** Opcode 0x24 (6-bit), 8-bit header, 5 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Tile ID | Immediate | Output tile identifier (0-15) |
+| Base | Immediate | Framebuffer base address |
+| Width | Immediate | Width in pixels |
+| Height | Immediate | Height in pixels |
+| Format | Immediate | Color format (1=RGB888,2=RGB101010,3=RGBA8888,4=YUV422,5=YUV420) |
+| Refresh | Immediate | Refresh rate in millihertz |
+
+**Assembly Syntax:**
+```
+CFG_VIDEO tile, base, width, height, format, refresh
+CFG_VIDEO.DB tile, base0, width, height, format, refresh  ; Double-buffered
+CFG_VIDEO.SWAP tile, new_base   ; Swap buffer
+CFG_VIDEO.OFF tile               ; Disable output
+```
+
+**Examples:**
+```assembly
+; Configure 1920x1080 RGB output
+CFG_VIDEO #0, framebuffer, #1920, #1080, #0x01, #60000
+
+; 4K with double buffering
+CFG_VIDEO.DB #0, fb0, #3840, #2160, #0x03, #60000
+
+; Swap buffers
+CFG_VIDEO.SWAP #0, new_fb
+
+; Disable video output
+CFG_VIDEO.OFF #0
+```
+
+---
+
+### 10.6 CFG_AUDIO - Configure Audio Output
+
+**Description:** Configures audio output tile.
+
+**System Core Encoding:** Opcode 0x25 (6-bit), 8-bit header, 6 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Tile ID | Immediate | Output tile identifier (0-15) |
+| Buffer | Immediate | Circular buffer base address |
+| Size | Immediate | Buffer size in bytes |
+| Rate | Immediate | Sample rate in Hz |
+| Bits | Immediate | Bit depth (16,24,32) |
+| Channels | Immediate | Channel count (1-32) |
+| Map | Immediate | Channel map address |
+
+**Assembly Syntax:**
+```
+CFG_AUDIO tile, buffer, size, rate, bits, channels, map
+CFG_AUDIO.MIX tile, buffer, size, rate, bits, channels, map  ; Hardware mixing
+```
+
+**Examples:**
+```assembly
+; Configure stereo audio at 48 kHz
+CFG_AUDIO #0, audio_buffer, #65536, #48000, #16, #2, channel_map
+
+; 5.1 surround sound
+CFG_AUDIO #0, audio_buffer, #131072, #96000, #24, #6, surround_map
+
+; Hardware mixing
+CFG_AUDIO.MIX #0, master_buffer, #65536, #48000, #16, #2, map
+```
+
+---
+
+### 10.7 RING_INIT - Initialize Circular Buffer
+
+**Description:** Initializes a hardware-managed circular buffer.
+
+**System Core Encoding:** Opcode 0x26 (6-bit), 8-bit header, 4 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Buffer | Immediate | Buffer base address |
+| SegSize | Immediate | Segment size in bytes |
+| SegCount | Immediate | Number of segments |
+| Control | Immediate | Ring control structure address |
+
+**Assembly Syntax:**
+```
+RING_INIT buffer, seg_size, seg_count, control
+RING_INIT.INT buffer, seg_size, seg_count, control  ; With interrupts
+```
+
+**Examples:**
+```assembly
+; Initialize audio ring buffer
+RING_INIT audio_buffer, #4096, #16, ring_ctrl
+
+; Initialize with interrupts
+RING_INIT.INT audio_buffer, #4096, #16, ring_ctrl
+
+; Remote ring buffer
+RING_INIT.REMOTE shared_buffer, #4096, #16, @4:ring_ctrl
+```
+
+---
+
+### 10.8 RING_WRITE - Write to Ring Buffer
+
+**Description:** Writes data to a circular buffer.
+
+**System Core Encoding:** Opcode 0x27 (6-bit), 8-bit header, 3 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Ring | Immediate | Ring buffer identifier |
+| Data | Immediate | Source data address |
+| Length | Immediate | Data length in bytes |
+
+**Assembly Syntax:**
+```
+RING_WRITE ring, data, length
+RING_WRITE.NB ring, data, length   ; Non-blocking
+RING_WRITE.SG ring, list, count    ; Scatter-gather
+```
+
+**Examples:**
+```assembly
+; Write audio samples
+RING_WRITE #0, audio_samples, #1024
+
+; Non-blocking write
+RING_WRITE.NB #0, audio_samples, #1024
+BRANCH CS, buffer_full
+
+; Scatter-gather write
+RING_WRITE.SG #0, sg_list, #3
+```
+
+---
+
+### 10.9 RING_SWAP - Swap Ring Buffer Pointers
+
+**Description:** Atomically swaps read and write pointers.
+
+**System Core Encoding:** Opcode 0x28 (6-bit), 8-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+RING_SWAP ring
+RING_SWAP.BLOCK ring   ; Block until consumer finishes
+RING_SWAP.COND ring    ; Conditional (non-blocking)
+```
+
+**Examples:**
+```assembly
+; Double-buffered audio
+RING_WRITE #0, audio_samples, #4096
+RING_SWAP #0
+RING_WRITE #0, audio_samples2, #4096
+
+; Video page flip
+RENDER next_frame
+RING_SWAP #0
+
+; Conditional swap
+RING_SWAP.COND #0
+BRANCH CS, consumer_busy
+```
+
+---
+
+## Section 11: Interconnect Instructions
+
+### 11.1 MAP_STORAGE - Map NAND Flash to Memory
+
+**Description:** Maps NAND flash storage into the memory address space.
+
+**Math Core Encoding:** Opcode 0x70, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Chip | Immediate | Flash chip identifier (0-127) |
+| Block | Immediate | Starting flash block address |
+| Addr | Immediate | Target memory base address |
+| Size | Immediate | Size in bytes (page-aligned) |
+
+**Flags:** ECC strength (bits 8-9: 0=none,1=4-bit,2=8-bit,3=12-bit), Write-through (bit 10), Compression (bit 11), Read-only (bit 12)
+
+**Assembly Syntax:**
+```
+MAP_STORAGE chip, block, addr, size
+MAP_STORAGE.ECC8 chip, block, addr, size  ; 8-bit ECC
+MAP_STORAGE.RO chip, block, addr, size    ; Read-only
+MAP_STORAGE.COMP chip, block, addr, size  ; Hardware decompression
+```
+
+**Examples:**
+```assembly
+; Map 1GB of flash to address 0x100000000
+MAP_STORAGE #0, #0, #0x100000000, #0x40000000
+
+; Map with read-only and compression
+MAP_STORAGE.RO.COMP #0, #0, #0x200000000, #0x40000000
+```
+
+---
+
+### 11.2 MAP_STORAGE.ROMB2 - Map ROMB Gen2 Optical Memory
+
+**Description:** Maps ROMB Gen2 optical memory into the address space.
+
+**Math Core Encoding:** Opcode 0x70 with flag bit 13 set, 20-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+MAP_STORAGE.ROMB2 stack, block, addr, size
+```
+
+**Examples:**
+```assembly
+; Map ROMB Gen2 stack 0
+MAP_STORAGE.ROMB2 #0, #0, #0x200000000, #0x17C00000000
+```
+
+---
+
+### 11.3 EXPORT_MEMORY - Export Local Memory
+
+**Description:** Exports local memory to remote blades.
+
+**Math Core Encoding:** Opcode 0x71, 20-bit header, 5 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Local | Immediate | Local memory base address |
+| Size | Immediate | Size in bytes |
+| Blades | Immediate | Remote blade mask (0xFFFF=all) |
+| Remote | Immediate | Remote base address |
+| Perm | Immediate | Permissions (bit0=read,bit1=write,bit2=execute) |
+
+**Assembly Syntax:**
+```
+EXPORT_MEMORY local, size, blades, remote, perm
+EXPORT_MEMORY.RO local, size, blades, remote, perm  ; Read-only
+EXPORT_MEMORY.PERSIST local, size, blades, remote, perm  ; Persistent
+```
+
+**Examples:**
+```assembly
+; Export 1GB to all blades
+EXPORT_MEMORY #0x10000000, #0x40000000, #0xFFFF, #0x20000000, #0x03
+
+; Read-only export
+EXPORT_MEMORY.RO #0x10000000, #0x40000000, #0x000F, #0x20000000, #0x01
+```
+
+---
+
+### 11.4 REMOTE_CALL - Remote Procedure Call
+
+**Description:** Executes a function on a remote blade.
+
+**Math Core Encoding:** Opcode 0x72, 20-bit header, 5 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Blade | Immediate | Target blade identifier |
+| Func | Immediate | Function address on target |
+| ArgC | Immediate | Argument count (0-8) |
+| Args | Immediate | Argument list address |
+| Result | Immediate | Result return address |
+
+**Assembly Syntax:**
+```
+REMOTE_CALL blade, func, argc, args, result
+REMOTE_CALL.ASYNC blade, func, argc, args, result  ; Asynchronous
+REMOTE_CALL.FF blade, func, argc, args, #0         ; Fire-and-forget
+```
+
+**Examples:**
+```assembly
+; Synchronous remote call
+REMOTE_CALL #4, #0x1000, #2, arg_list, result
+
+; Asynchronous call
+REMOTE_CALL.ASYNC #4, #0x1000, #2, arg_list, result
+
+; Fire-and-forget
+REMOTE_CALL.FF #4, #0x1000, #2, arg_list, #0
+```
+
+---
+
+### 11.5 LINK_STATUS - Query Optical Link Health
+
+**Description:** Returns status of an optical link.
+
+**Math Core Encoding:** Opcode 0x73, 20-bit header, 2 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Blade | Immediate | Target blade identifier |
+| Buffer | Immediate | Status buffer address (64 bytes) |
+
+**Assembly Syntax:**
+```
+LINK_STATUS blade, buffer
+LINK_STATUS.ERR blade, buffer  ; Include error counters
+```
+
+**Examples:**
+```assembly
+; Query link to blade 4
+LINK_STATUS #4, status_buffer
+LD.B R1, [status_buffer]   ; 0=down,1=up
+
+; Check signal strength
+LD.W R1, [status_buffer + #8]  ; dBm
+
+; Check bit error rate
+LD.D R1, [status_buffer + #16] ; BER as float
+CMP R1, #1e-12
+BRANCH GT, poor_quality
+```
+
+---
+
+### 11.6 RACK_UNIFY - Unify Rack Memory
+
+**Description:** Unifies blades into single shared memory.
+
+**Math Core Encoding:** Opcode 0x74, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Start | Immediate | Starting blade number |
+| End | Immediate | Ending blade number |
+| Base | Immediate | Global base address |
+| Interleave | Immediate | Interleaving granularity (bytes) |
+
+**Assembly Syntax:**
+```
+RACK_UNIFY start, end, base, interleave
+RACK_UNIFY.GLOBAL start, end, base, interleave  ; Multi-rack
+```
+
+**Examples:**
+```assembly
+; Unify blades 1-20
+RACK_UNIFY #1, #20, #0x00000000, #64
+
+; Multi-rack unification
+RACK_UNIFY.GLOBAL #1, #256, #0x00000000, #4096
+```
+
+---
+
+### 11.7 WARP_SYNC - Synchronize Warp
+
+**Description:** Synchronizes 32 cores in a warp.
+
+**Math Core Encoding:** Opcode 0x75, 20-bit header, 1 operand descriptor
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Warp | Immediate | Warp identifier (0-311) |
+
+**Assembly Syntax:**
+```
+WARP_SYNC warp
+WARP_SYNC.ALL        ; Synchronize all warps
+WARP_SYNC.TIMEOUT warp, cycles  ; With timeout
+```
+
+**Examples:**
+```assembly
+; Synchronize warp 0
+WARP_SYNC #0
+
+; Global synchronization
+WARP_SYNC.ALL
+
+; With timeout
+WARP_SYNC.TIMEOUT #0, #1000
+BRANCH CS, timeout
+```
+
+---
+
+### 11.8 BROADCAST - Broadcast to All Blades
+
+**Description:** Sends instruction stream to all blades.
+
+**Math Core Encoding:** Opcode 0x77, 20-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+BROADCAST
+    ; instructions to broadcast
+BROADCAST_END
+BROADCAST.WAIT      ; Wait for completion
+BROADCAST.OTHER     ; Exclude self
+```
+
+**Examples:**
+```assembly
+; Broadcast initialization
+BROADCAST
+    MOV R1, #0
+    MOV R2, #0
+BROADCAST_END
+
+; Broadcast with wait
+BROADCAST.WAIT
+    NOP
+BROADCAST_END
+```
+
+---
+
+### 11.9 BARRIER_SYNC - Global Barrier
+
+**Description:** Global barrier synchronization across all cores and blades.
+
+**Math Core Encoding:** Opcode 0x78, 20-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+BARRIER_SYNC
+BARRIER_SYNC.TIMEOUT cycles  ; With timeout
+BARRIER_SYNC.MASK mask       ; Only specific cores
+```
+
+**Examples:**
+```assembly
+; Basic global barrier
+BARRIER_SYNC
+
+; With timeout
+BARRIER_SYNC.TIMEOUT #1000000
+BRANCH CS, timeout
+
+; Phase transition in iterative algorithm
+iteration_loop:
+    CALL local_compute
+    BARRIER_SYNC
+    CALL global_update
+    BARRIER_SYNC
+    JMP iteration_loop
+```
+
+---
+
+## Section 12: Memory Management Instructions
+
+### 12.1 SEGMENT_CREATE - Create Memory Segment
+
+**Description:** Creates a new segment in the segment tree.
+
+**System Core Encoding:** Opcode 0xB0, 8-bit header, 6 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Parent | Immediate | Parent segment identifier |
+| Base | Immediate | Base address (aligned to size) |
+| SizeExp | Immediate | Size exponent (0-48, size=2^(12+exp)) |
+| Owner | Immediate | Owner identifier |
+| Perm | Immediate | Permissions mask |
+| Buffer | Immediate | Descriptor buffer address |
+
+**Assembly Syntax:**
+```
+SEGMENT_CREATE parent, base, size_exp, owner, perm, buffer
+SEGMENT_CREATE.CODE parent, base, size_exp, owner, perm, buffer
+SEGMENT_CREATE.REMOTE parent, base, size_exp, owner, perm, buffer, blade
+```
+
+**Examples:**
+```assembly
+; Create 1MB data segment
+SEGMENT_CREATE #0, #0x10000000, #8, owner, #0x03, desc_buffer
+
+; Create code segment (execute-only)
+SEGMENT_CREATE.CODE #0, #0x20000000, #4, owner, #0x04, desc_buffer
+```
+
+---
+
+### 12.2 SEGMENT_DELETE - Delete Segment
+
+**Description:** Deletes a segment and all its children.
+
+**System Core Encoding:** Opcode 0xB1, 8-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+SEGMENT_DELETE seg
+SEGMENT_DELETE.FORCE seg   ; Delete even if in use
+SEGMENT_DELETE.LAZY seg    ; Mark deleted, reclaim later
+```
+
+**Examples:**
+```assembly
+; Delete segment 42
+SEGMENT_DELETE #42
+
+; Force delete
+SEGMENT_DELETE.FORCE #42
+```
+
+---
+
+### 12.3 SEGMENT_MODIFY - Modify Segment
+
+**Description:** Changes segment permissions or owner.
+
+**System Core Encoding:** Opcode 0xB2, 8-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+SEGMENT_MODIFY.PERM seg, perm    ; Change permissions
+SEGMENT_MODIFY.OWNER seg, owner  ; Change owner
+SEGMENT_MODIFY.SEAL seg          ; Seal (make immutable)
+```
+
+**Examples:**
+```assembly
+; Make read-only
+SEGMENT_MODIFY.PERM #42, #0x01
+
+; Transfer ownership
+SEGMENT_MODIFY.OWNER #42, #4096
+
+; Seal segment
+SEGMENT_MODIFY.SEAL #42
+```
+
+---
+
+### 12.4 CAPABILITY_GRANT - Create Capability Token
+
+**Description:** Creates a signed capability token.
+
+**System Core Encoding:** Opcode 0xB3, 8-bit header, 5 operand descriptors
+
+**Assembly Syntax:**
+```
+CAPABILITY_GRANT seg, target, perm, expiry, buffer
+CAPABILITY_GRANT.ONCE seg, target, perm, expiry, buffer  ; One-time
+CAPABILITY_GRANT.REVOKE seg, target, perm, expiry, buffer  ; Revocable
+```
+
+**Examples:**
+```assembly
+; Grant read-only access for 1 hour
+CAPABILITY_GRANT #42, #4096, #0x01, #3600, token_buffer
+
+; One-time use token
+CAPABILITY_GRANT.ONCE #42, #4096, #0x03, #0, token_buffer
+```
+
+---
+
+### 12.5 CAPABILITY_ACCEPT - Import Capability
+
+**Description:** Imports a capability token.
+
+**System Core Encoding:** Opcode 0xB4, 8-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+CAPABILITY_ACCEPT token, name, buffer
+CAPABILITY_ACCEPT.VERIFY token, name, buffer  ; Verify only
+```
+
+**Examples:**
+```assembly
+; Accept token and create segment
+CAPABILITY_ACCEPT token_buffer, #0, desc_buffer
+LD.W new_seg_id, [desc_buffer]
+
+; Verify token without importing
+CAPABILITY_ACCEPT.VERIFY token_buffer, #0, desc_buffer
+BRANCH CS, invalid_token
+```
+
+---
+
+### 12.6 SEGMENT_LOOKUP - Look Up Segment
+
+**Description:** Returns segment descriptor for address or ID.
+
+**System Core Encoding:** Opcode 0xB5, 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+SEGMENT_LOOKUP addr, buffer
+SEGMENT_LOOKUP.ID seg, buffer   ; Lookup by ID
+SEGMENT_LOOKUP.WALK addr, buffer  ; Return full path
+```
+
+**Examples:**
+```assembly
+; Look up address
+SEGMENT_LOOKUP #0x10000000, desc_buffer
+BRANCH CS, not_mapped
+
+; Get permissions
+LD.B R1, [desc_buffer + #13]
+TEST R1, #0x02
+BRANCH EQ, not_writable
+
+; Walk full path
+SEGMENT_LOOKUP.WALK #0x10000000, path_buffer
+```
+
+---
+
+### 12.7 TLB_INVALIDATE - Invalidate TLB
+
+**Description:** Invalidates TLB entries.
+
+**System Core Encoding:** Opcode 0xB6, 8-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+TLB_INVALIDATE addr
+TLB_INVALIDATE.ID seg        ; Invalidate by segment ID
+TLB_INVALIDATE.ALL           ; Flush entire TLB
+TLB_INVALIDATE.GLOBAL addr   ; Broadcast to all cores
+```
+
+**Examples:**
+```assembly
+; Invalidate single page
+TLB_INVALIDATE #0x10000000
+
+; Invalidate all entries
+TLB_INVALIDATE.ALL
+
+; After permission change
+SEGMENT_MODIFY.PERM #42, #0x01
+TLB_INVALIDATE.ID #42
+```
+
+---
+
+## Section 13: Protection Instructions
+
+### 13.1 OWNER_GET - Get Current Owner
+
+**Description:** Returns current owner identifier and ancestor chain.
+
+**System Core Encoding:** Opcode 0xB7, 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+OWNER_GET owner_buf, anc_buf
+OWNER_GET.DEPTH owner_buf, anc_buf  ; Include depth
+```
+
+**Examples:**
+```assembly
+; Get current owner
+OWNER_GET owner_buffer, #0
+LD.W R1, [owner_buffer]
+
+; Get owner and ancestors
+OWNER_GET owner_buffer, ancestors_buffer
+LD.W R2, [ancestors_buffer]  ; Parent
+LD.W R3, [ancestors_buffer+4]  ; Grandparent
+
+; Validate chain
+OWNER_GET.VALIDATE owner_buffer, ancestors_buffer
+BRANCH CS, chain_corrupted
+```
+
+---
+
+### 13.2 OWNER_SET_PARENT - Set Owner Parent
+
+**Description:** Sets parent of owner in hierarchy (root only).
+
+**System Core Encoding:** Opcode 0xB8, 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+OWNER_SET_PARENT owner, parent
+OWNER_SET_PARENT.CREATE owner, parent  ; Create if missing
+OWNER_SET_PARENT.MOVE owner, parent    ; Move subtree
+```
+
+**Examples:**
+```assembly
+; Set parent during boot
+OWNER_SET_PARENT #1, #0
+OWNER_SET_PARENT #2, #1
+
+; Create new owner
+OWNER_SET_PARENT.CREATE #4096, #256
+
+; Move entire subtree
+OWNER_SET_PARENT.MOVE #100, #200
+```
+
+---
+
+### 13.3 RING_SET - Map Ring Number to Owner
+
+**Description:** Maps x86 ring number to owner ID.
+
+**System Core Encoding:** Opcode 0xC0, 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+RING_SET ring, owner
+RING_SET.DEFAULT owner      ; Set default for all rings
+RING_SET.CLEAR ring         ; Clear mapping
+```
+
+**Examples:**
+```assembly
+; Map rings
+RING_SET #0, #2    ; Kernel
+RING_SET #3, #5    ; User
+
+; Set default
+RING_SET.DEFAULT #5
+```
+
+---
+
+### 13.4 IRQ_SET - Assign Interrupt to Owner
+
+**Description:** Assigns interrupt request line to owner.
+
+**System Core Encoding:** Opcode 0xC1, 8-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+IRQ_SET irq, owner
+IRQ_SET.ENABLE irq, owner  ; Enable after assignment
+IRQ_SET.STEAL irq, owner   ; Take from current owner
+```
+
+**Examples:**
+```assembly
+; Assign timer interrupt
+IRQ_SET #0, #2
+
+; Assign keyboard to user
+IRQ_SET #1, #5
+
+; Steal IRQ
+IRQ_SET.STEAL #0, #2
+```
+
+---
+
+### 13.5 IO_MAP - Map I/O Device
+
+**Description:** Maps memory-mapped I/O device into segment tree.
+
+**System Core Encoding:** Opcode 0xC2, 8-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+IO_MAP phys, size, seg, perm
+IO_MAP.PCI phys, size, seg, perm  ; PCI config space
+IO_MAP.WC phys, size, seg, perm   ; Write-combining
+```
+
+**Examples:**
+```assembly
+; Map PCI config space
+IO_MAP.PCI #0xCF800000, #0x1000000, segment_io, #0x03
+
+; Map UART
+IO_MAP #0x3F8, #8, segment_uart, #0x03
+
+; Map framebuffer with write-combining
+IO_MAP.WC #0xA0000, #0x20000, segment_fb, #0x03
+```
+
+---
+
+### 13.6 SEGMENT_WALK - Walk Segment Tree
+
+**Description:** Walks segment tree, returns full path.
+
+**System Core Encoding:** Opcode 0xC3, 8-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+SEGMENT_WALK addr, buffer, max
+SEGMENT_WALK.VALIDATE addr, #0, #0  ; Validate only
+SEGMENT_WALK.REMOTE addr, buffer, max, blade
+```
+
+**Examples:**
+```assembly
+; Walk address
+SEGMENT_WALK #0x10000000, desc_buffer, #10
+
+; Validate only
+SEGMENT_WALK.VALIDATE #0x10000000, #0, #0
+BRANCH CS, not_walkable
+
+; Get depth
+SEGMENT_WALK #0x10000000, desc_buffer, #10
+LD.W R1, [desc_buffer]  ; Count
+```
+
+---
+
+## Section 14: Register Type Mapping Instructions
+
+### 14.1 SET_REG_MAP - Set Register Type Map
+
+**Description:** Sets default register type and vector length.
+
+**Math Core Encoding:** Opcode 0x0F, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Bank | Immediate | Register bank (0=MATH,1=LOGIC,2=SYSTEM) |
+| Type | Immediate | Data type (0=INT4,1=INT8,2=INT16,3=INT32,4=INT64,5=FP16,6=FP32,7=FP64) |
+| Length | Immediate | Vector length (0=128,1=256,2=512,3=1024 bits) |
+| Round | Immediate | Rounding mode (0=nearest,1=zero,2=up,3=down) |
+
+**Assembly Syntax:**
+```
+SET_REG_MAP bank, type, length, round
+```
+
+**Examples:**
+```assembly
+; Set Math core to FP32, 512-bit vectors
+SET_REG_MAP #MATH, #FP32, #V512, #NEAREST
+
+; Set System core to 64-bit scalar
+SET_REG_MAP #SYSTEM, #INT64, #SCALAR, #NEAREST
+```
+
+---
+
+### 14.2 SET_REG_TYPE - Set Individual Register Type
+
+**Description:** Sets type for a specific register.
+
+**Math Core Encoding:** Opcode 0x0E, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+SET_REG_TYPE reg, type
+SET_REG_TYPE reg, type, length  ; With vector length override
+```
+
+**Examples:**
+```assembly
+; Set V3 to FP16
+SET_REG_TYPE V3, #FP16
+
+; Set V4 to INT4 with 256-bit vectors
+SET_REG_TYPE V4, #INT4, #V256
+
+; Set R1 to 32-bit integer
+SET_REG_TYPE R1, #INT32
+```
+
+---
+
+### 14.3 GET_REG_TYPE - Get Register Type
+
+**Description:** Returns type of a register.
+
+**Math Core Encoding:** Opcode 0x0D, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+GET_REG_TYPE reg, dest
+```
+
+**Examples:**
+```assembly
+; Get type of V3
+GET_REG_TYPE V3, R10
+```
+
+---
+
+### 14.4 RESET_REG_MAP - Reset Register Map
+
+**Description:** Resets register bank to default configuration.
+
+**Math Core Encoding:** Opcode 0x0C, 20-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+RESET_REG_MAP bank
+RESET_REG_MAP #ALL   ; Reset all banks
+```
+
+**Examples:**
+```assembly
+; Reset Math core to default
+RESET_REG_MAP #MATH
+
+; Reset all banks
+RESET_REG_MAP #ALL
+```
+
+---
+
+## Section 15: INT4 Memory Instructions
+
+### 15.1 MOVI4 - Move INT4 Data
+
+**Description:** Moves packed INT4 data.
+
+**Math Core Encoding:** Opcode 0x90, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+MOVI4 dest, src
+MOVI4.NT dest, src  ; Non-temporal
+MOVI4.Z dest, src   ; Zero-extend to 8-bit
+```
+
+---
+
+### 15.2 PACKI4 - Pack to INT4
+
+**Description:** Packs 8-bit to INT4.
+
+**Math Core Encoding:** Opcode 0x91, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+PACKI4 dest, src
+PACKI4.S dest, src  ; Saturating
+PACKI4.R dest, src  ; Rounding
+```
+
+---
+
+### 15.3 UNPACKI4 - Unpack INT4
+
+**Description:** Unpacks INT4 to 8-bit.
+
+**Math Core Encoding:** Opcode 0x92, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+UNPACKI4 dest, src
+UNPACKI4.S dest, src  ; Sign extension
+UNPACKI4.Z dest, src  ; Zero extension
+```
+
+---
+
+### 15.4 ADDI4 - Add INT4 Vectors
+
+**Description:** INT4 vector addition.
+
+**Math Core Encoding:** Opcode 0x93, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+ADDI4 dest, src1, src2
+ADDI4.S dest, src1, src2  ; Saturating
+```
+
+---
+
+### 15.5 MULI4 - Multiply INT4 Vectors
+
+**Description:** INT4 vector multiplication.
+
+**Math Core Encoding:** Opcode 0x94, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+MULI4 dest, src1, src2
+MULI4.R dest, src1, src2  ; Rounding
+```
+
+---
+
+### 15.6 DOTI4 - INT4 Dot Product
+
+**Description:** INT4 dot product.
+
+**Math Core Encoding:** Opcode 0x95, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+DOTI4 dest, src1, src2
+DOTI4.A dest, src1, src2  ; Accumulate
+```
+
+---
+
+## Section 16: ROMB Instructions
+
+### 16.1 ROMB_INSERT - Insert into L1 Cache
+
+**Description:** Loads ROMB data directly into L1 cache.
+
+**Math Core Encoding:** Opcode 0x9C, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+ROMB_INSERT romb_addr, cache_line
+```
+
+**Examples:**
+```assembly
+; Insert from ROMB address into L1 cache line 0
+ROMB_INSERT #0x200000000, #0x00
+```
+
+---
+
+### 16.2 ROMB_IRQ - Configure ROMB Interrupt
+
+**Description:** Configures interrupt when ROMB data ready.
+
+**Math Core Encoding:** Opcode 0x9D, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+ROMB_IRQ romb_addr, length, vector
+```
+
+**Examples:**
+```assembly
+; Configure interrupt on ROMB address range
+ROMB_IRQ #0x200000000, #1048576, #42
+```
+
+---
+
+### 16.3 ROMB_PRIORITY - Set ROMB Priority
+
+**Description:** Sets ROMB module priority for overlay.
+
+**Math Core Encoding:** Opcode 0x9E, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+ROMB_PRIORITY module, priority
+```
+
+**Examples:**
+```assembly
+; Set module 0 as highest priority
+ROMB_PRIORITY #0, #0
+; Set module 1 as lower priority
+ROMB_PRIORITY #1, #1
+```
+
+---
+
+### 16.4 ROMB_SELECT - Select ROMB Module
+
+**Description:** Selects ROMB module for address range.
+
+**Math Core Encoding:** Opcode 0x9F, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+ROMB_SELECT module, base, size
+```
+
+**Examples:**
+```assembly
+; Use module 2 for address range
+ROMB_SELECT #2, #0x200000000, #0x1000000
+```
+
+---
+
+## Section 17: Transactional Memory Instructions
+
+### 17.1 XBEGIN - Begin Transaction
+
+**Description:** Starts a transaction, sets fallback handler.
+
+**Math Core Encoding:** Opcode 0xE0, 20-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+XBEGIN handler
+```
+
+**Examples:**
+```assembly
+; Start transaction
+XBEGIN fallback
+    ; transactional code
+XEND
+fallback:
+    ; non-transactional fallback
+```
+
+---
+
+### 17.2 XEND - End Transaction
+
+**Description:** Commits transaction.
+
+**Math Core Encoding:** Opcode 0xE1, 20-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+XEND
+```
+
+---
+
+### 17.3 XABORT - Abort Transaction
+
+**Description:** Aborts transaction.
+
+**Math Core Encoding:** Opcode 0xE2, 20-bit header, 1 operand descriptor
+
+**Assembly Syntax:**
+```
+XABORT code
+```
+
+---
+
+### 17.4 XTEST - Test in Transaction
+
+**Description:** Tests if currently in transaction.
+
+**Math Core Encoding:** Opcode 0xE3, 20-bit header, 0 operand descriptors
+
+**Assembly Syntax:**
+```
+XTEST
+BRANCH NZ, in_transaction
+```
+
+---
+
+## Section 18: Variable Precision Vector Instructions
+
+### 18.1 SET_PRECISION - Set Precision Mask
+
+**Description:** Sets precision mask for vector.
+
+**Math Core Encoding:** Opcode 0xE4, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+SET_PRECISION vec, mask
+```
+
+**Examples:**
+```assembly
+; Set precision mask for V1
+SET_PRECISION V1, precision_mask
+```
+
+---
+
+### 18.2 VADDP.VP - Variable Precision Vector Add
+
+**Description:** Vector add with variable precision.
+
+**Math Core Encoding:** Opcode 0xE5, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+VADDP.VP dest, src1, src2
+```
+
+---
+
+### 18.3 VMULP.VP - Variable Precision Vector Multiply
+
+**Description:** Vector multiply with variable precision.
+
+**Math Core Encoding:** Opcode 0xE6, 20-bit header, 3 operand descriptors
+
+---
+
+### 18.4 VFMA.VP - Variable Precision Vector FMA
+
+**Description:** Vector FMA with variable precision.
+
+**Math Core Encoding:** Opcode 0xE7, 20-bit header, 4 operand descriptors
+
+---
+
+## Section 19: In-Memory Compute Instructions
+
+### 19.1 MEM_SCAN - Scan Memory
+
+**Description:** Scans memory for pattern (executed in memory controller).
+
+**Math Core Encoding:** Opcode 0xE8, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Base | Immediate | Start address |
+| Size | Immediate | Size in bytes |
+| Pattern | Immediate | Pattern to match |
+| Result | Immediate | Result buffer address |
+
+**Assembly Syntax:**
+```
+MEM_SCAN base, size, pattern, result
+```
+
+**Examples:**
+```assembly
+; Scan 1GB for pattern
+MEM_SCAN #0x10000000, #0x40000000, #0xDEADBEEF, result_buffer
+```
+
+---
+
+### 19.2 MEM_FILTER - Filter Records
+
+**Description:** Filters records by predicate.
+
+**Math Core Encoding:** Opcode 0xE9, 20-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+MEM_FILTER base, size, predicate, result
+```
+
+---
+
+### 19.3 MEM_AGGREGATE - Aggregate
+
+**Description:** Aggregates (sum, count, min, max).
+
+**Math Core Encoding:** Opcode 0xEA, 20-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+MEM_AGGREGATE base, size, op, result
+```
+
+---
+
+### 19.4 MEM_BITMAP - Create Bitmap
+
+**Description:** Creates bitmap of matching records.
+
+**Math Core Encoding:** Opcode 0xEB, 20-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+MEM_BITMAP base, size, predicate, bitmap
+```
+
+---
+
+## Section 20: Compression Instructions
+
+### 20.1 MEM_COMPRESS - Compress Memory
+
+**Description:** Compresses memory region.
+
+**Math Core Encoding:** Opcode 0xEC, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+MEM_COMPRESS src, dst, size
+MEM_COMPRESS.LZ77 src, dst, size  ; Force LZ77
+```
+
+---
+
+### 20.2 MEM_DECOMPRESS - Decompress Memory
+
+**Description:** Decompresses memory region.
+
+**Math Core Encoding:** Opcode 0xED, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+MEM_DECOMPRESS src, dst, size
+```
+
+---
+
+### 20.3 DME_COPY_COMP - Compressed Copy
+
+**Description:** Copy and compress using DME.
+
+**Math Core Encoding:** Opcode 0xEE, 20-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+DME_COPY_COMP src, dst, size, mode
+```
+
+---
+
+### 20.4 MEM_COMPRESS_STATS - Get Compression Stats
+
+**Description:** Returns compression statistics.
+
+**Math Core Encoding:** Opcode 0xEF, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+MEM_COMPRESS_STATS base, size, buffer
+```
+
+---
+
+### 20.5 MEM_COMPRESS_ADAPT - Adaptive Compression
+
+**Description:** Adaptive compression with learned parameters.
+
+**Math Core Encoding:** Opcode 0xF0, 20-bit header, 3 operand descriptors
+
+---
+
+### 20.6 MEM_TRAIN_COMPRESS - Train Compressor
+
+**Description:** Trains compression neural network.
+
+**Math Core Encoding:** Opcode 0xF1, 20-bit header, 2 operand descriptors
+
+---
+
+### 20.7 MEM_ALLOC_COMPRESS_AWARE - Compression-Aware Alloc
+
+**Description:** Allocates memory optimized for compression.
+
+**Math Core Encoding:** Opcode 0xF2, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+MEM_ALLOC_COMPRESS_AWARE size, ptr
+```
+
+---
+
+## Section 21: Parsing Instructions (HGPE)
+
+### 21.1 PARSE - Parse Input
+
+**Description:** Parses input with BNF grammar.
+
+**Math Core Encoding:** Opcode 0xFA, 20-bit header, 4 operand descriptors
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Grammar | Immediate | Grammar address |
+| Input | Immediate | Input data address |
+| Size | Immediate | Input size in bytes |
+| Output | Immediate | AST output address |
+
+**Assembly Syntax:**
+```
+PARSE grammar, input, size, output
+PARSE_STREAM grammar, stream, output  ; Streaming
+```
+
+**Examples:**
+```assembly
+; Parse JSON data
+PARSE json_grammar, input_data, #1048576, ast_output
+
+; Streaming parse
+PARSE_STREAM json_grammar, socket_handle, ast_output
+```
+
+---
+
+### 21.2 PARSE_DEFINE_GRAMMAR - Define Grammar
+
+**Description:** Compiles BNF grammar to hardware representation.
+
+**Math Core Encoding:** Opcode 0xFC, 20-bit header, 2 operand descriptors
+
+**Assembly Syntax:**
+```
+PARSE_DEFINE_GRAMMAR source, dest
+```
+
+**Examples:**
+```assembly
+; Compile BNF grammar
+PARSE_DEFINE_GRAMMAR bnf_source, grammar_addr
+```
+
+---
+
+### 21.3 PARSE_MATCH - Pattern Match
+
+**Description:** Tests pattern match (regex or literal).
+
+**Math Core Encoding:** Opcode 0xFD, 20-bit header, 4 operand descriptors
+
+**Assembly Syntax:**
+```
+PARSE_MATCH pattern, input, size, result
+```
+
+**Examples:**
+```assembly
+; Check if string matches pattern
+PARSE_MATCH pattern, input, #100, result
+```
+
+---
+
+### 21.4 AST_WALK - Walk AST
+
+**Description:** Traverses AST with visitor.
+
+**Math Core Encoding:** Opcode 0xFE, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+AST_WALK root, visitor, context
+```
+
+---
+
+### 21.5 AST_QUERY - Query AST
+
+**Description:** Queries AST with path expression.
+
+**Math Core Encoding:** Opcode 0xFF, 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+AST_QUERY root, path, result
+```
+
+**Examples:**
+```assembly
+; Extract value from JSON AST
+AST_QUERY ast_root, "$.users[0].name", name_buffer
+```
+
+---
+
+### 21.6 AST_TRANSFORM - Transform AST
+
+**Description:** Applies transformation rules.
+
+**Math Core Encoding:** Opcode 0xF0 (alternate), 20-bit header, 3 operand descriptors
+
+**Assembly Syntax:**
+```
+AST_TRANSFORM root, rules, output
+```
+
+---
+
+## Section 22: Miscellaneous Instructions
+
+### 22.1 NOP - No Operation
+
+**Description:** Performs no operation.
+
+**All Cores:** Opcode 0x00
+
+| Core Type | Header Bits | Encoding |
+|-----------|-------------|----------|
+| Math | 20 bits | 0x00000 |
+| Logic | 12 bits | 0x000 |
+| System | 8 bits | 0x00 |
+
+**Assembly Syntax:**
+```
+NOP
+NOP.MULTI #7   ; 7-byte NOP sequence
+```
+
+**Examples:**
+```assembly
+; Simple NOP
+NOP
+
+; Alignment padding
+ALIGN 16
+NOP
+NOP
+NOP
+
+; Timing delay loop
+MOV R1, #100
+delay_loop:
+    NOP
+    SUB R1, #1
+    BRANCH NE, delay_loop
+
+; Placeholder for hotpatch
+NOP
+NOP
+NOP
+NOP
+NOP   ; Room for 5-byte JMP
+```
+
+---
+
+### 22.2 CPUID - Processor Identification
+
+**Description:** Returns processor identification and feature information.
+
+**System Core Encoding:** Opcode 0x7D, 8-bit header, 1 operand descriptor
+
+| Operand | Type | Description |
+|---------|------|-------------|
+| Leaf | Immediate | Information leaf (0-0x40000003) |
+
+**Returns:** R1, R2, R3, R4 contain leaf-specific data
+
+**Assembly Syntax:**
+```
+CPUID leaf
+```
+
+**Standard Leaves:**
+| Leaf | Information |
+|------|-------------|
+| 0 | Vendor string, max leaf |
+| 1 | Model, stepping, features |
+| 2 | Cache/TLB info |
+| 3 | Serial number |
+| 4 | Deterministic cache params |
+| 7 | Extended features |
+| 0x80000000 | Extended max leaf |
+| 0x80000001 | Extended features |
+| 0x40000000 | Sirius NEXUS specific |
+| 0x40000001 | Math core count |
+| 0x40000002 | Frequency in MHz |
+| 0x40000003 | Max vector length |
+
+**Examples:**
+```assembly
+; Get vendor string
+CPUID #0
+; R1,R2,R3 contain "SiriusNEXUS"
+
+; Check for AVX support
+CPUID #1
+TEST R3, #0x10000000
+BRANCH NE, avx_supported
+
+; Get number of Math cores
+CPUID #0x40000000
+SHR R1, R1, #16
+AND R1, #0xFFFF
+
+; Get cache line size
+CPUID #2
+AND R1, #0xFF
+
+; Get processor frequency
+CPUID #0x40000002
+; R1 contains frequency in MHz
+
+; Get max vector length
+CPUID #0x40000003
+; R1 contains max vector length (16,32,64,128 bytes)
+```
+
+---
+
+### 22.3 RDTSC - Read Time-Stamp Counter
+
+**Description:** Reads 128-bit time-stamp counter (cycles since reset).
+
+**System Core Encoding:** Opcode 0x7E, 8-bit header, 0 operand descriptors
+
+**Returns:** R1 = low 64 bits, R2 = high 64 bits
+
+**Assembly Syntax:**
+```
+RDTSC
+RDTSC.SERIAL  ; Wait for previous instructions to complete
+```
+
+**Examples:**
+```assembly
+; Read timestamp
+RDTSC
+; R1:R2 contains 128-bit cycle count
+
+; Measure code execution time
+RDTSC.SERIAL
+MOV R3, R1
+MOV R4, R2
+; ... code to measure ...
+RDTSC.SERIAL
+SUB R1, R3
+SUBC R2, R4
+; R1:R2 is the interval in cycles
+
+; Convert cycles to nanoseconds
+RDTSC
+CPUID #0x40000002   ; R1 = frequency in MHz
+MUL R3, R1, #1000   ; Convert to KHz
+; cycles / (frequency/1e9) = nanoseconds
+
+; Timestamp as random seed
+RDTSC
+XOR R1, R2
+MOV seed, R1
+
+; Wait for specific timestamp
+RDTSC
+CMP R1, target_low
+BRANCH HI, done
+CMP R2, target_high
+BRANCH LO, wait
+
+; Execute for exactly 1000 cycles
+RDTSC
+MOV R5, R1
+MOV R6, R2
+ADD R5, #1000
+ADDC R6, #0
+wait_loop:
+    RDTSC
+    CMP R1, R5
+    BRANCH LO, wait_loop
+    CMP R2, R6
+    BRANCH LO, wait_loop
+```
+
+---
+
+### 22.4 HLT - Halt Core
+
+**Description:** Halts core until interrupt.
+
+**All Cores:** Opcode 0x7F
+
+| Core Type | Header Bits | Encoding |
+|-----------|-------------|----------|
+| Math | 20 bits | 0x7F0000 |
+| Logic | 12 bits | 0x7F0 |
+| System | 8 bits | 0x7F |
+
+**Flags:** Bit 8 for deep sleep, bit 9 for stop granting
+
+**Assembly Syntax:**
+```
+HLT
+HLT.DEEP    ; Deeper sleep, longer wakeup
+HLT.STOP    ; Stop granting bus requests
+```
+
+**Examples:**
+```assembly
+; Basic halt
+HLT
+
+; OS idle loop
+idle:
+    HLT
+    JMP idle
+
+; Deep sleep (power saving)
+HLT.DEEP
+
+; Halt with wake-on-LAN
+CFG_NETWORK_WOL #1
+HLT
+
+; Halt in bootloader on error
+error:
+    HLT
+    JMP error
+
+; Halt with timer wakeup
+CFG_TIMER #1000000000
+HLT
+CALL on_timer_wakeup
+```
+
+---
+
+## Section 23: SYSTEM API Commands
+
+The SYSTEM API provides device management functions via the SYSENTER instruction. Service identifiers are placed in R1, commands in R2.
+
+### 23.1 Service 0x3000: DEVICE_INFO
+
+| Command | Name | R3 | R4 | R5 | Description |
+|---------|------|----|----|----|-------------|
+| 0x01 | GET_IDENTITY | buffer (256) | - | - | Get device identity |
+| 0x02 | GET_CAPABILITIES | buffer (64) | - | - | Get capabilities |
+| 0x03 | GET_ATTRIBUTES | buffer (64) | - | - | Get attributes |
+| 0x05 | GET_SERIAL | buffer (32) | - | - | Get serial number |
+| 0x06 | GET_UUID | buffer (16) | - | - | Get UUID |
+
+**Examples:**
+```assembly
+; Get device identity
+MOV R1, #0x3000
+MOV R2, #0x01
+LEA R3, identity_buffer
+SYSENTER
+
+; Get capabilities
+MOV R1, #0x3000
+MOV R2, #0x02
+LEA R3, caps_buffer
+SYSENTER
+```
+
+---
+
+### 23.2 Service 0x3001: CHASSIS_CTRL
+
+| Command | Name | R3 | R4 | R5 | Description |
+|---------|------|----|----|----|-------------|
+| 0x01 | LED_SET | led_id | state | - | Set LED state |
+| 0x03 | LED_BLINK | led_id | interval_ms | duration_ms | Blink LED |
+| 0x10 | FAN_SET_SPEED | fan_id | rpm | - | Set fan speed |
+| 0x12 | FAN_SET_MODE | fan_id | mode | - | Set fan mode |
+| 0x30 | BEACON_ENABLE | enable | - | - | Enable locator |
+
+**Examples:**
+```assembly
+; Turn on power LED
+MOV R1, #0x3001
+MOV R2, #0x01
+MOV R3, #0    ; POWER_LED
+MOV R4, #1    ; ON
+SYSENTER
+
+; Enable locator beacon
+MOV R1, #0x3001
+MOV R2, #0x30
+MOV R3, #1
+SYSENTER
+```
+
+---
+
+### 23.3 Service 0x3002: POWER_MGMT
+
+| Command | Name | R3 | R4 | R5 | Description |
+|---------|------|----|----|----|-------------|
+| 0x01 | SHUTDOWN | flags | - | - | Shutdown |
+| 0x02 | REBOOT | flags | - | - | Reboot |
+| 0x07 | GET_POWER_STATE | buffer (4) | - | - | Get power state |
+| 0x09 | SET_POWER_CAP | watts_mw | - | - | Set power cap |
+| 0x0E | GET_HEALTH | buffer (32) | - | - | Get health |
+
+**Examples:**
+```assembly
+; Shutdown
+MOV R1, #0x3002
+MOV R2, #0x01
+MOV R3, #0
+SYSENTER
+
+; Set power cap to 500W
+MOV R1, #0x3002
+MOV R2, #0x09
+MOV R3, #500000
+SYSENTER
+```
+
+---
+
+### 23.4 Service 0x3003: VIDEO_AUDIO
+
+| Command | Name | R3 | R4 | R5 | Description |
+|---------|------|----|----|----|-------------|
+| 0x01 | VIDEO_CFG_MODE | tile_id | mode_ptr | - | Configure video |
+| 0x02 | VIDEO_CFG_FRAMEBUFFER | tile_id | fb_addr | fb_size | Set framebuffer |
+| 0x04 | VIDEO_SWAP_BUFFER | tile_id | - | - | Swap buffers |
+| 0x10 | AUDIO_CFG_OUTPUT | out_id | params_ptr | - | Configure audio |
+| 0x12 | AUDIO_START_STREAM | stream_id | - | - | Start audio |
+
+**Examples:**
+```assembly
+; Configure video
+MOV R1, #0x3003
+MOV R2, #0x01
+MOV R3, #0
+LEA R4, mode_buffer
+SYSENTER
+
+; Set framebuffer
+MOV R1, #0x3003
+MOV R2, #0x02
+MOV R3, #0
+MOV R4, #0xA0000000
+MOV R5, #1920*1080*4
+SYSENTER
+```
+
+---
+
+### 23.5 Service 0x3004: NETWORK
+
+| Command | Name | R3 | R4 | R5 | Description |
+|---------|------|----|----|----|-------------|
+| 0x20 | OPTICAL_LINK_STATUS | link_id | buffer (32) | - | Link status |
+| 0x40 | RDMA_READ | remote_addr | local_addr | size | RDMA read |
+
+**Examples:**
+```assembly
+; Check optical link
+MOV R1, #0x3004
+MOV R2, #0x20
+MOV R3, #0
+LEA R4, link_status
+SYSENTER
+
+; RDMA read
+MOV R1, #0x3004
+MOV R2, #0x40
+MOV R3, #0x40000000000   ; Blade 4, offset 0
+MOV R4, local_buffer
+MOV R5, #1048576
+SYSENTER
+```
+
+---
+
+## Summary Table
+
+| Category | Count | Access |
+|----------|-------|--------|
+| Data Movement | 5 | Core ISA |
+| Arithmetic | 9 | Core ISA |
+| Logic and Bit | 9 | Core ISA |
+| Control Flow | 4 | Core ISA |
+| Vector and SIMD | 5 | Core ISA |
+| Advanced Math | 16 | Core ISA |
+| INT4 Inference | 12 | Core ISA |
+| Probabilistic | 10 | Core ISA |
+| System | 9 | Core ISA |
+| Interconnect | 9 | Core ISA |
+| Memory Management | 7 | Core ISA |
+| Protection | 6 | Core ISA |
+| Register Type Mapping | 4 | Core ISA |
+| INT4 Memory | 6 | Core ISA |
+| ROMB | 4 | Core ISA |
+| Transactional Memory | 4 | Core ISA |
+| Variable Precision | 4 | Core ISA |
+| In-Memory Compute | 4 | Core ISA |
+| Compression | 7 | Core ISA |
+| Parsing (HGPE) | 7 | Core ISA |
+| Miscellaneous | 4 | Core ISA |
+| **Total Core Instructions** | **132** | - |
+| SYSTEM API (0x3000-0x3004) | 15+ | SYSENTER |
+
+---
+
+*End of Volume 1: Complete Instruction Set Reference*
+
+**This document contains the complete, unified instruction set specification for the Sirius NEXUS AI Processor Gen5. Copy this text into your preferred word processor or document editor to save as a downloadable file.**
