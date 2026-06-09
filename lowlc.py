@@ -1,5 +1,3 @@
-I will revise the LOWL compiler to be a full-featured systems programming language with Python-like syntax, targeting the Sirius NEXUS assembler. The compiler will support all 132 instructions, SYSTEM API calls, chip-based storage, vector registers, and output Sirius NEXUS assembly format.
-
 ```python
 #!/usr/bin/env python3
 """
