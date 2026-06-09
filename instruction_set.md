@@ -3,9 +3,6 @@
 ## Volume 1: Complete Instruction Set Reference
 
 # Sirius NEXUS AI Processor Gen5 - Complete Instruction Set Summary
-
-# Sirius NEXUS AI Processor Gen5 - Complete Production Instruction Set Reference
-
 ## All 184 Instructions with Full Specifications
 
 This document provides the complete instruction set for production release of the Sirius NEXUS AI Processor Gen5, including all core instructions, SYSTEM API commands, and hardware acceleration primitives.
