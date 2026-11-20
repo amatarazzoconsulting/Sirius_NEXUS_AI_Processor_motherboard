@@ -382,7 +382,7 @@ We look forward to discussing this proposal with your technical and business tea
 
 **Anthony Matarazzo**
 Chief Architect, Sirius NEXUS Computing
-amatarazzo777@gmail.com
+amatarazzo.consulting@proton.me
 
 **Enclosures:**
 - Volume 1: Complete Instruction Set Reference (1,500 pages)
