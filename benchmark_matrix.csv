@@ -1,0 +1,10 @@
+workload,model_or_test,precision,batch_or_concurrency,primary_metric,secondary_metrics,notes
+GEMM,4096x4096x4096,FP16,1,TFLOP/s,utilization;power,repeat across tile shapes
+GEMM,8192x8192x8192,FP8,1,TFLOP/s,utilization;power,validate accumulation mode
+LLM inference,7B class,INT4,1;8;32;64,tokens/s,TTFT;p50;p95;p99;tokens/J,identical checkpoint/tokenizer
+LLM inference,70B class,INT4,1;8;32;64,tokens/s,TTFT;p50;p95;p99;tokens/J,identical checkpoint/tokenizer
+LLM inference,405B class,INT4,distributed,tokens/s,scaling efficiency;network bytes,report parallelism strategy
+LLM inference,70B class,BF16,1;8;32,tokens/s,quality;memory use,do not compare against INT4 without qualification
+Attention,long-context sequence,FP16/BF16,1,sequence tokens/s,KV traffic;latency,report context length and head dimensions
+Memory,streaming read/write,mixed,1,sustained TB/s,latency percentiles,report controller utilization
+Collectives,all-reduce,mixed,2/4/8/16 nodes,effective GB/s,latency;scaling efficiency,compare electrical and optical fabric
