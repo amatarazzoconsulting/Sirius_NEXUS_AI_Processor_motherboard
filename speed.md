@@ -1,7 +1,3 @@
-I reviewed the existing [`speed.md` Gen5 report](https://github.com/amatarazzoconsulting/Sirius_NEXUS_AI_Processor_motherboard/blob/main/speed.md?utm_source=chatgpt.com). It contains two major parts: a comparative performance report and a scientific-discovery analysis. The rewrite below preserves that broad structure while updating it for Generation Six.
-
-I have also corrected an important issue in the original: several Gen5 figures were presented as measured performance even though their supporting hardware benchmarks were not established. The Gen6 version distinguishes **design targets, calculated theoretical limits, simulation results, and measured silicon performance**. This makes the document more credible as an engineering specification and a future benchmark report.
-
 # Sirius NEXUS AI Processor Generation Six
 
 # Performance, Speed, and Scientific Discovery Report
